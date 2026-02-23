@@ -39,8 +39,42 @@ from .rollout_storage import RolloutStorage
 
 class GRPOOriginal(PPO):
     actor_critic: ActorCritic
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self,
+                 actor_critic,
+                 num_learning_epochs=1,
+                 num_mini_batches=1,
+                 clip_param=0.2,
+                 gamma=0.998,
+                 lam=0.95,
+                 entropy_coef=0.0,
+                 learning_rate=1e-3,
+                 max_grad_norm=1.0,
+                 schedule="fixed",
+                 desired_kl=0.01,
+                 device='cpu',
+                 ):
+
+        self.device = device
+
+        self.desired_kl = desired_kl
+        self.schedule = schedule
+        self.learning_rate = learning_rate
+
+        # PPO components
+        self.actor_critic = actor_critic
+        self.actor_critic.to(self.device)
+        self.storage = None # initialized later
+        self.optimizer = optim.Adam(self.actor_critic.parameters(), lr=learning_rate)
+        self.transition = RolloutStorage.Transition()
+
+        # PPO parameters
+        self.clip_param = clip_param
+        self.num_learning_epochs = num_learning_epochs
+        self.num_mini_batches = num_mini_batches
+        self.entropy_coef = entropy_coef
+        self.gamma = gamma
+        self.lam = lam
+        self.max_grad_norm = max_grad_norm
 
     def update(self):
         mean_surrogate_loss = 0
