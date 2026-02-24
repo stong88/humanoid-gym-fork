@@ -23,6 +23,13 @@ class DiscreteActionsWrapper:
 
     # goes from action index to the action in the continuous state space
     def step(self, action_index):
+        if not hasattr(self, "alredy_printed"):
+            self.alredy_printed = True
+            print("=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*")
+            print("Discretization working!")
+            print(self.bins)
+            print("=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*")
+
         if action_index.dtype != torch.long:
             action_index = action_index.long()
         action_index = torch.clamp(action_index, 0, self.num_bins - 1)
