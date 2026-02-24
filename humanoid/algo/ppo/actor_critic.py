@@ -31,12 +31,13 @@
 
 import torch
 import torch.nn as nn
-from torch.distributions import Normal
+from torch.distributions import Categorical
 
 class ActorCritic(nn.Module):
     def __init__(self,  num_actor_obs,
                         num_critic_obs,
                         num_actions,
+                        num_bins=7,
                         actor_hidden_dims=[256, 256, 256],
                         critic_hidden_dims=[256, 256, 256],
                         init_noise_std=1.0,
@@ -55,7 +56,8 @@ class ActorCritic(nn.Module):
         actor_layers.append(activation)
         for l in range(len(actor_hidden_dims)):
             if l == len(actor_hidden_dims) - 1:
-                actor_layers.append(nn.Linear(actor_hidden_dims[l], num_actions))
+                # changing output layer size to match the new bin approach 
+                actor_layers.append(nn.Linear(actor_hidden_dims[l], num_actions * num_bins))
             else:
                 actor_layers.append(nn.Linear(actor_hidden_dims[l], actor_hidden_dims[l + 1]))
                 actor_layers.append(activation)
@@ -77,10 +79,7 @@ class ActorCritic(nn.Module):
         print(f"Critic MLP: {self.critic}")
 
         # Action noise
-        self.std = nn.Parameter(init_noise_std * torch.ones(num_actions))
         self.distribution = None
-        # disable args validation for speedup
-        Normal.set_default_validate_args = False
         
 
     @staticmethod
@@ -88,7 +87,6 @@ class ActorCritic(nn.Module):
     def init_weights(sequential, scales):
         [torch.nn.init.orthogonal_(module.weight, gain=scales[idx]) for idx, module in
          enumerate(mod for mod in sequential if isinstance(mod, nn.Linear))]
-
 
     def reset(self, dones=None):
         pass
@@ -107,10 +105,17 @@ class ActorCritic(nn.Module):
     @property
     def entropy(self):
         return self.distribution.entropy().sum(dim=-1)
-
+    
+    @property
+    def action_logits(self):
+        return self.logits 
+    
     def update_distribution(self, observations):
-        mean = self.actor(observations)
-        self.distribution = Normal(mean, mean*0. + self.std)
+        # using a categorical distribution instead of normal for the discrete action space
+        logits = self.actor(observations)
+        logits = logits.view(-1, self.num_actions, self.num_bins)
+        self.logits = logits
+        self.distribution = Categorical(logits=logits)
 
     def act(self, observations, **kwargs):
         self.update_distribution(observations)
@@ -120,8 +125,8 @@ class ActorCritic(nn.Module):
         return self.distribution.log_prob(actions).sum(dim=-1)
 
     def act_inference(self, observations):
-        actions_mean = self.actor(observations)
-        return actions_mean
+        logits = self.actor(observations).view(-1, self.num_actions, self.num_bins)
+        return torch.argmax(logits, dim=-1)
 
     def evaluate(self, critic_observations, **kwargs):
         value = self.critic(critic_observations)

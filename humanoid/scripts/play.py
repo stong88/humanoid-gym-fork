@@ -43,6 +43,7 @@ from isaacgym.torch_utils import *
 import torch
 from tqdm import tqdm
 from datetime import datetime
+from humanoid.envs.wrapper.discretized_action_space import DiscreteActionsWrapper
 
 
 def play(args):
@@ -68,6 +69,10 @@ def play(args):
 
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
+
+    # uses the discrete action wrapper 
+    env = DiscreteActionsWrapper(env, num_bins=7)
+    
     env.set_camera(env_cfg.viewer.pos, env_cfg.viewer.lookat)
 
     obs = env.get_observations()
