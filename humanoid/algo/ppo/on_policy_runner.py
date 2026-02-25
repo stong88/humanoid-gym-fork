@@ -79,6 +79,7 @@ class OnPolicyRunner:
             [self.env.num_obs],
             [self.env.num_privileged_obs],
             [self.env.num_actions],
+            num_bins=self.policy_cfg.get("num_bins", 7),
         )
 
         # Log
@@ -195,7 +196,7 @@ class OnPolicyRunner:
                 value = torch.mean(infotensor)
                 self.writer.add_scalar("Episode/" + key, value, locs["it"])
                 ep_string += f"""{f'Mean episode {key}:':>{pad}} {value:.4f}\n"""
-        mean_std = self.alg.actor_critic.std.mean()
+        mean_entropy = getattr(self.alg, "last_mean_entropy", None)
         fps = int(
             self.num_steps_per_env
             * self.env.num_envs
@@ -209,7 +210,7 @@ class OnPolicyRunner:
             "Loss/surrogate", locs["mean_surrogate_loss"], locs["it"]
         )
         self.writer.add_scalar("Loss/learning_rate", self.alg.learning_rate, locs["it"])
-        self.writer.add_scalar("Policy/mean_noise_std", mean_std.item(), locs["it"])
+        self.writer.add_scalar("Policy/entropy", mean_entropy, locs["it"])
         self.writer.add_scalar("Perf/total_fps", fps, locs["it"])
         self.writer.add_scalar(
             "Perf/collection time", locs["collection_time"], locs["it"]
@@ -245,7 +246,7 @@ class OnPolicyRunner:
                             'collection_time']:.3f}s, learning {locs['learn_time']:.3f}s)\n"""
                 f"""{'Value function loss:':>{pad}} {locs['mean_value_loss']:.4f}\n"""
                 f"""{'Surrogate loss:':>{pad}} {locs['mean_surrogate_loss']:.4f}\n"""
-                f"""{'Mean action noise std:':>{pad}} {mean_std.item():.2f}\n"""
+                f"""{'Policy entropy:':>{pad}} {mean_entropy:.2f}\n"""
                 f"""{'Mean reward:':>{pad}} {statistics.mean(locs['rewbuffer']):.2f}\n"""
                 f"""{'Mean episode length:':>{pad}} {statistics.mean(locs['lenbuffer']):.2f}\n"""
             )
