@@ -115,7 +115,7 @@ class GRPOOriginal(PPO):
                                                                                 1.0 + self.clip_param)
                 surrogate_loss = torch.max(surrogate, surrogate_clipped).mean()
 
-                loss = surrogate_loss + self.value_loss_coef - self.entropy_coef * entropy_batch.mean()
+                loss = surrogate_loss - self.entropy_coef * entropy_batch.mean()
 
                 # Gradient step
                 self.optimizer.zero_grad()
