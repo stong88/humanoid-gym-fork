@@ -79,7 +79,6 @@ class OnPolicyRunner:
             [self.env.num_obs],
             [self.env.num_privileged_obs],
             [self.env.num_actions],
-            num_bins=self.policy_cfg.get("num_bins", 7),
         )
 
         # Log
