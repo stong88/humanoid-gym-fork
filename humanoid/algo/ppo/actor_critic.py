@@ -48,6 +48,7 @@ class ActorCritic(nn.Module):
         super(ActorCritic, self).__init__()
 
         self.num_bins = num_bins
+        self.num_actions = num_actions
         
         mlp_input_dim_a = num_actor_obs
         mlp_input_dim_c = num_critic_obs
