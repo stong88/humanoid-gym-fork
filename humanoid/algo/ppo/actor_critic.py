@@ -47,7 +47,8 @@ class ActorCritic(nn.Module):
             print("ActorCritic.__init__ got unexpected arguments, which will be ignored: " + str([key for key in kwargs.keys()]))
         super(ActorCritic, self).__init__()
 
-
+        self.num_bins = num_bins
+        
         mlp_input_dim_a = num_actor_obs
         mlp_input_dim_c = num_critic_obs
         # Policy
