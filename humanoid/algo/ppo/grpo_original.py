@@ -76,6 +76,8 @@ class GRPOOriginal(PPO):
         self.lam = lam
         self.max_grad_norm = max_grad_norm
 
+        print(f'GRPOOriginal: clipping parameter {self.clip_param}')
+
     def update(self):
         mean_surrogate_loss = 0
 

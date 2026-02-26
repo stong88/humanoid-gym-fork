@@ -291,7 +291,7 @@ class XBotLCfgGRPOOriginal(LeggedRobotCfgPPO):
 
         # logging
         save_interval = 100  # Please check for potential savings every `save_interval` iterations.
-        experiment_name = 'XBot_ppo'
+        experiment_name = 'XBot_grpo_original_'
         run_name = ''
         # Load and resume
         resume = False
