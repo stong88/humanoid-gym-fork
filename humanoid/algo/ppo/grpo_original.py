@@ -82,6 +82,7 @@ class GRPOOriginal(PPO):
         mean_surrogate_loss = 0
 
         generator = self.storage.group_mini_batch_generator()
+        total_loss = 0
         for obs_batch, _, actions_batch, _, _, returns_batch, old_actions_log_prob_batch, \
             old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch in generator:
 
@@ -117,15 +118,14 @@ class GRPOOriginal(PPO):
                                                                                 1.0 + self.clip_param)
                 surrogate_loss = torch.max(surrogate, surrogate_clipped).mean()
 
-                loss = surrogate_loss - self.entropy_coef * entropy_batch.mean()
-
-                # Gradient step
-                self.optimizer.zero_grad()
-                loss.backward()
-                nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
-                self.optimizer.step()
-
+                total_loss += surrogate_loss - self.entropy_coef * entropy_batch.mean()
                 mean_surrogate_loss += surrogate_loss.item()
+
+        # Gradient step
+        self.optimizer.zero_grad()
+        total_loss.backward()
+        nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
+        self.optimizer.step()
 
         num_updates = self.num_learning_epochs * self.num_mini_batches
         mean_surrogate_loss /= num_updates
