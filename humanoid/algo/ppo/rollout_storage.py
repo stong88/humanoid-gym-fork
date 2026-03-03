@@ -180,3 +180,22 @@ class RolloutStorage:
                 old_sigma_batch = old_sigma[batch_idx]
                 yield obs_batch, critic_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
                        old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
+    
+    def group_mini_batch_generator(self):
+        if self.privileged_observations is not None:
+            critic_observations = self.privileged_observations
+        else:
+            critic_observations = self.observations
+
+        for i in range(self.num_envs):
+            obs_batch = self.observations[:, i]
+            critic_observations_batch = critic_observations[:, i]
+            actions_batch = self.actions[:, i]
+            target_values_batch = self.values[:, i]
+            returns_batch = self.returns[:, i]
+            old_actions_log_prob_batch = self.actions_log_prob[:, i]
+            advantages_batch = self.advantages[:, i]
+            old_mu_batch = self.mu[:, i]
+            old_sigma_batch = self.sigma[:, i]
+            yield obs_batch, critic_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
+                    old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
