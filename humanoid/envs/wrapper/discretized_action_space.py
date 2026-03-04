@@ -2,7 +2,7 @@ import torch
 
 class DiscreteActionsWrapper:
     # creates a wrapper around the env to allow us to go from the discrete action space back to the continuous
-    def __init__(self, env, num_bins = 7, low = -1.0, high = 1.0):
+    def __init__(self, env, num_bins = 15, low = -3.0, high = 3.0):
         self.env = env
 
         # create the bins 
