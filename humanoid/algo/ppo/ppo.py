@@ -130,8 +130,22 @@ class PPO:
                 sigma_batch = self.actor_critic.action_std
                 entropy_batch = self.actor_critic.entropy
 
+                if self._dbg_printed < 10:
+                    print("=*"*10)
+                    print("Entropy mean: ", entropy_batch.mean().item())
+                    print("=*"*10)
+
                 # Surrogate loss
                 ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
+
+                if self._dbg_printed < 10:
+                    print("=*"*10)
+                    print("Ratio mean: ", ratio.mean().item())
+                    print("Ratio std: ", ratio.std().item())
+                    print("Ratio min: ", ratio.min().item()) 
+                    print("Ratio max: ", ratio.max().item())
+                    print("=*"*10)
+
                 surrogate = -torch.squeeze(advantages_batch) * ratio
                 surrogate_clipped = -torch.squeeze(advantages_batch) * torch.clamp(ratio, 1.0 - self.clip_param,
                                                                                 1.0 + self.clip_param)
@@ -154,6 +168,19 @@ class PPO:
                 loss.backward()
                 nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
                 self.optimizer.step()
+
+                if not hasattr(self, "debug_print_statments"):
+                    self.debug_print_statments = 0
+                if self.debug_print_statments < 10:  # print first 10 updates only
+                    total_norm = 0.0
+                    for p in self.actor_critic.parameters():
+                        if p.grad is not None:
+                            total_norm += p.grad.data.norm(2).item()
+                    print("=*"*10)
+                    print("Grad_norm_sum: ", total_norm)
+                    print("lr: ", self.learning_rate)
+                    print("=*"*10)
+                    self.debug_print_statments += 1
 
                 mean_value_loss += value_loss.item()
                 mean_surrogate_loss += surrogate_loss.item()
