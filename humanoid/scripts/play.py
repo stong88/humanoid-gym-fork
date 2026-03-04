@@ -71,7 +71,7 @@ def play(args):
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
 
     # uses the discrete action wrapper 
-    env = DiscreteActionsWrapper(env, num_bins=15)
+    env = DiscreteActionsWrapper(env, num_bins=100)
     
     env.set_camera(env_cfg.viewer.pos, env_cfg.viewer.lookat)
 
