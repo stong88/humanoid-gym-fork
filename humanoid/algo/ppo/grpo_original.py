@@ -94,19 +94,19 @@ class GRPOOriginal(PPO):
                 entropy_batch = self.actor_critic.entropy
 
                 # KL
-                if self.desired_kl != None and self.schedule == 'adaptive':
-                    with torch.inference_mode():
-                        kl = torch.sum(
-                            torch.log(sigma_batch / old_sigma_batch + 1.e-5) + (torch.square(old_sigma_batch) + torch.square(old_mu_batch - mu_batch)) / (2.0 * torch.square(sigma_batch)) - 0.5, axis=-1)
-                        kl_mean = torch.mean(kl)
+                # if self.desired_kl != None and self.schedule == 'adaptive':
+                #     with torch.inference_mode():
+                #         kl = torch.sum(
+                #             torch.log(sigma_batch / old_sigma_batch + 1.e-5) + (torch.square(old_sigma_batch) + torch.square(old_mu_batch - mu_batch)) / (2.0 * torch.square(sigma_batch)) - 0.5, axis=-1)
+                #         kl_mean = torch.mean(kl)
 
-                        if kl_mean > self.desired_kl * 2.0:
-                            self.learning_rate = max(1e-5, self.learning_rate / 1.5)
-                        elif kl_mean < self.desired_kl / 2.0 and kl_mean > 0.0:
-                            self.learning_rate = min(1e-2, self.learning_rate * 1.5)
+                #         if kl_mean > self.desired_kl * 2.0:
+                #             self.learning_rate = max(1e-5, self.learning_rate / 1.5)
+                #         elif kl_mean < self.desired_kl / 2.0 and kl_mean > 0.0:
+                #             self.learning_rate = min(1e-2, self.learning_rate * 1.5)
                         
-                        for param_group in self.optimizer.param_groups:
-                            param_group['lr'] = self.learning_rate
+                #         for param_group in self.optimizer.param_groups:
+                #             param_group['lr'] = self.learning_rate
 
 
                 # Surrogate loss
