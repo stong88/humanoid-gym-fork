@@ -130,7 +130,9 @@ class PPO:
                 sigma_batch = self.actor_critic.action_std
                 entropy_batch = self.actor_critic.entropy
 
-                if self._dbg_printed < 10:
+                if not hasattr(self, "debug_print_statments"):
+                    self.debug_print_statments = 0
+                if self.debug_print_statments < 10:
                     print("=*"*10)
                     print("Entropy mean: ", entropy_batch.mean().item())
                     print("=*"*10)
@@ -138,7 +140,9 @@ class PPO:
                 # Surrogate loss
                 ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
 
-                if self._dbg_printed < 10:
+                if not hasattr(self, "debug_print_statments"):
+                    self.debug_print_statments = 0
+                if self.debug_print_statments < 10:
                     print("=*"*10)
                     print("Ratio mean: ", ratio.mean().item())
                     print("Ratio std: ", ratio.std().item())
