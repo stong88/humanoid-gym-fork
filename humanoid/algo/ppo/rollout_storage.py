@@ -188,7 +188,7 @@ class RolloutStorage:
             critic_observations = self.observations
         
         normalized_returns = (self.returns - self.returns.mean()) / (self.returns.std() + 1e-8)
-        normalized_summed_returns = torch.zeros(normalized_returns.shape)
+        normalized_summed_returns = torch.zeros(normalized_returns.shape, device=self.device)
         for i in reversed(range(normalized_returns.shape[0] - 1)):
             normalized_summed_returns[i] = normalized_returns[i] + normalized_returns[i + 1]
 
