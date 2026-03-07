@@ -38,6 +38,7 @@ from collections import deque
 from datetime import datetime
 from .ppo import PPO
 from .grpo_original import GRPOOriginal
+from .cgrpo import CGRPO
 from .actor_critic import ActorCritic
 from humanoid.algo.vec_env import VecEnv
 from torch.utils.tensorboard import SummaryWriter

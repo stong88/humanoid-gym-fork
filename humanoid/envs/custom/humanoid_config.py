@@ -298,3 +298,36 @@ class XBotLCfgGRPOOriginal(LeggedRobotCfgPPO):
         load_run = -1  # -1 = last run
         checkpoint = -1  # -1 = last saved model
         resume_path = None  # updated from load_run and chkpt
+
+class XBotLCfgCGRPO(LeggedRobotCfgPPO):
+    seed = 5
+    runner_class_name = 'OnPolicyRunner'   # DWLOnPolicyRunner
+
+    class policy:
+        init_noise_std = 1.0
+        actor_hidden_dims = [512, 256, 128]
+        critic_hidden_dims = [768, 256, 128]
+
+    class algorithm(LeggedRobotCfgPPO.algorithm):
+        entropy_coef = 0.001
+        learning_rate = 1e-5
+        num_learning_epochs = 2
+        gamma = 0.994
+        lam = 0.9
+        num_mini_batches = 4
+
+    class runner:
+        policy_class_name = 'ActorCritic'
+        algorithm_class_name = 'CGRPO'
+        num_steps_per_env = 60  # per iteration
+        max_iterations = 3001  # number of policy updates
+
+        # logging
+        save_interval = 100  # Please check for potential savings every `save_interval` iterations.
+        experiment_name = 'XBot_cgrpo'
+        run_name = ''
+        # Load and resume
+        resume = False
+        load_run = -1  # -1 = last run
+        checkpoint = -1  # -1 = last saved model
+        resume_path = None  # updated from load_run and chkpt
