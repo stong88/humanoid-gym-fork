@@ -187,16 +187,17 @@ class RolloutStorage:
         else:
             critic_observations = self.observations
         
-        returns_batch = (self.returns - self.returns.mean()) / (self.returns.std() + 1e-8)
-        for i in reversed(range(returns_batch.shape[0] - 1)):
-            returns_batch[i] = returns_batch[i] + returns_batch[i + 1]
+        normalized_returns = (self.returns - self.returns.mean()) / (self.returns.std() + 1e-8)
+        normalized_summed_returns = torch.zeros(normalized_returns.shape)
+        for i in reversed(range(normalized_returns.shape[0] - 1)):
+            normalized_summed_returns[i] = normalized_returns[i] + normalized_returns[i + 1]
 
         for i in range(self.num_envs):
             obs_batch = self.observations[:, i]
             critic_observations_batch = critic_observations[:, i]
             actions_batch = self.actions[:, i]
             target_values_batch = self.values[:, i]
-            returns_batch = returns_batch[:, i]
+            returns_batch = normalized_summed_returns[:, i]
             old_actions_log_prob_batch = self.actions_log_prob[:, i]
             advantages_batch = self.advantages[:, i]
             old_mu_batch = self.mu[:, i]
