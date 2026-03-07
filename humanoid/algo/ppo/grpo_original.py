@@ -83,14 +83,15 @@ class GRPOOriginal(PPO):
 
         generator = self.storage.group_mini_batch_generator()
         total_loss = 0
+        # Per group...
         for obs_batch, _, actions_batch, _, _, returns_batch, old_actions_log_prob_batch, \
             old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch in generator:
 
 
                 self.actor_critic.act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
                 actions_log_prob_batch = self.actor_critic.get_actions_log_prob(actions_batch)
-                mu_batch = self.actor_critic.action_mean
-                sigma_batch = self.actor_critic.action_std
+                # mu_batch = self.actor_critic.action_mean
+                # sigma_batch = self.actor_critic.action_std
                 entropy_batch = self.actor_critic.entropy
 
                 # KL
@@ -110,7 +111,8 @@ class GRPOOriginal(PPO):
 
 
                 # Surrogate loss
-                advantages_batch = (returns_batch - torch.mean(returns_batch)) / torch.std(returns_batch)  # GRPO (original)
+                # Returns shape (num_timesteps_per_env, num_groups, 1)
+                advantages_batch = returns_batch  # all work done in `group_mini_batch_generator`
 
                 ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
                 surrogate = -torch.squeeze(advantages_batch) * ratio

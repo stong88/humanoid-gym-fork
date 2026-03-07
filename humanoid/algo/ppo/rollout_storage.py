@@ -182,6 +182,9 @@ class RolloutStorage:
                        old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
     
     def group_mini_batch_generator(self):
+        NUM_ENVS_PER_GROUP = 8  # TODO when time, move this into config class...putting this here for simplicity for now
+        assert self.num_envs % NUM_ENVS_PER_GROUP == 0, "For simplicity, num_envs should be divisible by GRPO's NUM_ENVS_PER_GROUP"
+        
         if self.privileged_observations is not None:
             critic_observations = self.privileged_observations
         else:
@@ -193,14 +196,18 @@ class RolloutStorage:
             normalized_summed_returns[i] = normalized_returns[i] + normalized_returns[i + 1]
 
         for i in range(self.num_envs):
-            obs_batch = self.observations[:, i]
-            critic_observations_batch = critic_observations[:, i]
-            actions_batch = self.actions[:, i]
-            target_values_batch = self.values[:, i]
-            returns_batch = normalized_summed_returns[:, i]
-            old_actions_log_prob_batch = self.actions_log_prob[:, i]
-            advantages_batch = self.advantages[:, i]
-            old_mu_batch = self.mu[:, i]
-            old_sigma_batch = self.sigma[:, i]
+            start = i * NUM_ENVS_PER_GROUP
+            end = (i+1) * NUM_ENVS_PER_GROUP
+
+            # Return dims should be (num_transitions_per_env, NUM_GROUPS, ...)
+            obs_batch = self.observations[:, start:end]
+            critic_observations_batch = critic_observations[:, start:end]
+            actions_batch = self.actions[:, start:end]
+            target_values_batch = self.values[:, start:end]
+            returns_batch = normalized_summed_returns[:, start:end]
+            old_actions_log_prob_batch = self.actions_log_prob[:, start:end]
+            advantages_batch = self.advantages[:, start:end]
+            old_mu_batch = self.mu[:, start:end]
+            old_sigma_batch = self.sigma[:, start:end]
             yield obs_batch, critic_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
                     old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
