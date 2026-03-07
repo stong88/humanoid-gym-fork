@@ -195,7 +195,7 @@ class RolloutStorage:
         for i in reversed(range(normalized_returns.shape[0] - 1)):
             normalized_summed_returns[i] = normalized_returns[i] + normalized_returns[i + 1]
 
-        for i in range(self.num_envs):
+        for i in range(self.num_envs / NUM_ENVS_PER_GROUP):
             start = i * NUM_ENVS_PER_GROUP
             end = (i+1) * NUM_ENVS_PER_GROUP
 
