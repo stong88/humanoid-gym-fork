@@ -186,13 +186,17 @@ class RolloutStorage:
             critic_observations = self.privileged_observations
         else:
             critic_observations = self.observations
+        
+        returns_batch = (self.returns - self.returns.mean()) / (self.returns.std() + 1e-8)
+        for i in reversed(range(returns_batch.shape[0] - 1)):
+            returns_batch[i] = returns_batch[i] + returns_batch[i + 1]
 
         for i in range(self.num_envs):
             obs_batch = self.observations[:, i]
             critic_observations_batch = critic_observations[:, i]
             actions_batch = self.actions[:, i]
             target_values_batch = self.values[:, i]
-            returns_batch = self.returns[:, i]
+            returns_batch = returns_batch[:, i]
             old_actions_log_prob_batch = self.actions_log_prob[:, i]
             advantages_batch = self.advantages[:, i]
             old_mu_batch = self.mu[:, i]
