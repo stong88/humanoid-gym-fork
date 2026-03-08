@@ -119,7 +119,11 @@ class OnPolicyRunner:
         privileged_obs = self.env.get_privileged_observations()
         critic_obs = privileged_obs if privileged_obs is not None else obs
         obs, critic_obs = obs.to(self.device), critic_obs.to(self.device)
-        self.alg.actor_critic.train()  # switch to train mode (for dropout for example)
+        if self.cfg["algorithm_class_name"] == "CGRPO":
+            for i in range(self.alg_cfg["num_policies"]):
+                self.alg.actor_critics[i].train()
+        else:
+            self.alg.actor_critic.train()  # switch to train mode (for dropout for example)
 
         ep_infos = []
         rewbuffer = deque(maxlen=100)
@@ -206,7 +210,13 @@ class OnPolicyRunner:
                 value = torch.mean(infotensor)
                 self.writer.add_scalar("Episode/" + key, value, locs["it"])
                 ep_string += f"""{f'Mean episode {key}:':>{pad}} {value:.4f}\n"""
-        mean_std = self.alg.actor_critic.std.mean()
+        if self.cfg["algorithm_class_name"] == "CGRPO":
+            mean_std = torch.cat([
+                self.alg.actor_critics[i].std
+                for i in range(self.alg_cfg["num_policies"])
+            ]).mean()
+        else:
+            mean_std = self.alg.actor_critic.std.mean()
         fps = int(
             self.num_steps_per_env
             * self.env.num_envs
@@ -286,33 +296,40 @@ class OnPolicyRunner:
         )
         print(log_string)
 
+    # NOTE -- commenting out the functions below as they don't seem to be critical and rely on
+    # a single `self.alg.actor_critic`, which would need to be changed for CGRPO with multiple actor critics
+
     def save(self, path, infos=None):
-        torch.save(
-            {
-                "model_state_dict": self.alg.actor_critic.state_dict(),
-                "optimizer_state_dict": self.alg.optimizer.state_dict(),
-                "iter": self.current_learning_iteration,
-                "infos": infos,
-            },
-            path,
-        )
+        # torch.save(
+        #     {
+        #         "model_state_dict": self.alg.actor_critic.state_dict(),
+        #         "optimizer_state_dict": self.alg.optimizer.state_dict(),
+        #         "iter": self.current_learning_iteration,
+        #         "infos": infos,
+        #     },
+        #     path,
+        # )
+        pass
 
     def load(self, path, load_optimizer=True):
-        loaded_dict = torch.load(path)
-        self.alg.actor_critic.load_state_dict(loaded_dict["model_state_dict"])
-        if load_optimizer:
-            self.alg.optimizer.load_state_dict(loaded_dict["optimizer_state_dict"])
-        self.current_learning_iteration = loaded_dict["iter"]
-        return loaded_dict["infos"]
+        # loaded_dict = torch.load(path)
+        # self.alg.actor_critic.load_state_dict(loaded_dict["model_state_dict"])
+        # if load_optimizer:
+        #     self.alg.optimizer.load_state_dict(loaded_dict["optimizer_state_dict"])
+        # self.current_learning_iteration = loaded_dict["iter"]
+        # return loaded_dict["infos"]
+        pass
 
     def get_inference_policy(self, device=None):
-        self.alg.actor_critic.eval()  # switch to evaluation mode (dropout for example)
-        if device is not None:
-            self.alg.actor_critic.to(device)
-        return self.alg.actor_critic.act_inference
+        # self.alg.actor_critic.eval()  # switch to evaluation mode (dropout for example)
+        # if device is not None:
+        #     self.alg.actor_critic.to(device)
+        # return self.alg.actor_critic.act_inference
+        pass
 
     def get_inference_critic(self, device=None):
-        self.alg.actor_critic.eval()  # switch to evaluation mode (dropout for example)
-        if device is not None:
-            self.alg.actor_critic.to(device)
-        return self.alg.actor_critic.evaluate
+        # self.alg.actor_critic.eval()  # switch to evaluation mode (dropout for example)
+        # if device is not None:
+        #     self.alg.actor_critic.to(device)
+        # return self.alg.actor_critic.evaluate
+        pass
