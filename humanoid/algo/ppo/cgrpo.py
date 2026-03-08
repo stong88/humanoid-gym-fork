@@ -42,6 +42,7 @@ class CGRPO:
     def __init__(self,
                  actor_critics,
                  num_policies=8,
+                 num_kmeans_groups=2,
                  num_learning_epochs=1,
                  num_mini_batches=1,
                  clip_param=0.2,
@@ -60,6 +61,7 @@ class CGRPO:
         self.device = device
 
         self.num_policies = num_policies
+        self.num_kmeans_groups = num_kmeans_groups
         self.desired_kl = desired_kl
         self.schedule = schedule
         self.learning_rate = learning_rate
@@ -172,7 +174,7 @@ class CGRPO:
         ])
         features[:, 2] = variances
         
-        kmeans = KMeans(n_clusters=_, random_state=0).fit(features.numpy())
+        kmeans = KMeans(n_clusters=self.num_kmeans_groups, random_state=0).fit(features.numpy())
         kmeans.labels_
 
 
