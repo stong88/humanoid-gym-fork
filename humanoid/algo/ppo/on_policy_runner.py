@@ -66,9 +66,18 @@ class OnPolicyRunner:
         else:
             num_critic_obs = self.env.num_obs
         actor_critic_class = eval(self.cfg["policy_class_name"])  # ActorCritic
-        actor_critic: ActorCritic = actor_critic_class(
-            self.env.num_obs, num_critic_obs, self.env.num_actions, **self.policy_cfg
-        ).to(self.device)
+        if self.cfg["algorithm_class_name"] == "CGRPO":
+            actor_critic = [
+                actor_critic_class(
+                    self.env.num_obs, num_critic_obs, self.env.num_actions, **self.policy_cfg
+                ).to(self.device)
+                for _ in range(self.alg_cfg['num_policies'])
+            ]
+        else:
+            actor_critic: ActorCritic = actor_critic_class(
+                self.env.num_obs, num_critic_obs, self.env.num_actions, **self.policy_cfg
+            ).to(self.device)
+
         alg_class = eval(self.cfg["algorithm_class_name"])  # PPO
         self.alg: PPO = alg_class(actor_critic, device=self.device, **self.alg_cfg)
         self.num_steps_per_env = self.cfg["num_steps_per_env"]

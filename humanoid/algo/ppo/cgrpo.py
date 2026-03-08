@@ -37,9 +37,9 @@ from .actor_critic import ActorCritic
 from .rollout_storage import RolloutStorage
 
 class CGRPO:
-    actor_critic: ActorCritic
     def __init__(self,
-                 actor_critic,
+                 actor_critics,
+                 num_policies=8,
                  num_learning_epochs=1,
                  num_mini_batches=1,
                  clip_param=0.2,
@@ -57,15 +57,22 @@ class CGRPO:
 
         self.device = device
 
+        self.num_policies = num_policies
         self.desired_kl = desired_kl
         self.schedule = schedule
         self.learning_rate = learning_rate
 
         # PPO components
-        self.actor_critic = actor_critic
-        self.actor_critic.to(self.device)
+        assert len(actor_critics) == self.num_policies
+        self.actor_critics = actor_critics
+        for actor_critic in self.actor_critics:
+            actor_critic.to(self.device)
+        
         self.storage = None # initialized later
-        self.optimizer = optim.Adam(self.actor_critic.parameters(), lr=learning_rate)
+        self.optimizers = [
+            optim.Adam(self.actor_critic[i].parameters(), lr=learning_rate)
+            for i in range(num_policies)
+        ]
         self.transition = RolloutStorage.Transition()
 
         # PPO parameters
@@ -80,27 +87,50 @@ class CGRPO:
         self.use_clipped_value_loss = use_clipped_value_loss
 
     def init_storage(self, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape):
+        assert num_envs % self.num_policies == 0, "Number of envs must be divisible by num policies"
         self.storage = RolloutStorage(num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape, self.device)
 
     def test_mode(self):
-        self.actor_critic.test()
+        for actor_critic in self.actor_critics:
+            actor_critic.test()
     
     def train_mode(self):
-        self.actor_critic.train()
+        for actor_critic in self.actor_critics:
+            actor_critic.train()
 
-    def act(self, obs, critic_obs):
+    def act(self, obs, critic_obs):  # all (num_envs, ...)
+        split_obs = obs.split(self.num_policies, dim=0)
+        critic_obs = critic_obs.split(self.num_policies, dim=0)
+
         # Compute the actions and values
-        self.transition.actions = self.actor_critic.act(obs).detach()
-        self.transition.values = self.actor_critic.evaluate(critic_obs).detach()
-        self.transition.actions_log_prob = self.actor_critic.get_actions_log_prob(self.transition.actions).detach()
-        self.transition.action_mean = self.actor_critic.action_mean.detach()
-        self.transition.action_sigma = self.actor_critic.action_std.detach()
+        self.transition.actions = torch.cat([
+            self.actor_critics[i].act(o)
+            for i, o in enumerate(split_obs)
+        ], dim=0).detach()
+        self.transition.values = torch.cat([
+            self.actor_critics[i].evaluate(co)
+            for i, co in enumerate(critic_obs)
+        ], dim=0).detach()
+        self.transition.actions_log_prob = torch.cat([
+            self.actor_critics[i].get_actions_log_prob(a)
+            for i, a in enumerate(self.transition.actions.split(self.num_policies, dim=0))
+        ], dim=0).detach()
+        # NOTE -- I believe action_mean and action_sigma are only used in computation for the KL
+        # learning rate computation (which we're omitting), so no huge downstream impact of doing this
+        self.transition.action_mean = torch.tensor([
+            self.actor_critics[i].action_mean
+            for i in range(self.num_policies)
+        ]).mean().detach()
+        self.transition.action_sigma = torch.tensor([
+            self.actor_critics[i].action_std
+            for i in range(self.num_policies)
+        ]).mean().detach()
         # need to record obs and critic_obs before env.step()
         self.transition.observations = obs
         self.transition.critic_observations = critic_obs
         return self.transition.actions
     
-    def process_env_step(self, rewards, dones, infos):
+    def process_env_step(self, rewards, dones, infos):  # rewards, dones (num_envs,)
         self.transition.rewards = rewards.clone()
         self.transition.dones = dones
         # Bootstrapping on time outs
@@ -110,10 +140,14 @@ class CGRPO:
         # Record the transition
         self.storage.add_transitions(self.transition)
         self.transition.clear()
-        self.actor_critic.reset(dones)
+        for actor_critic in self.actor_critics:
+            actor_critic.reset(dones)
     
-    def compute_returns(self, last_critic_obs):
-        last_values= self.actor_critic.evaluate(last_critic_obs).detach()
+    def compute_returns(self, last_critic_obs):  # (num_envs, ...)
+        last_values= torch.cat([
+            self.actor_critics[i].evaluate(o)
+            for i, o in enumerate(last_critic_obs.split(self.num_policies, dim=0))
+        ], dim=0).detach()
         self.storage.compute_returns(last_values, self.gamma, self.lam)
 
     def update(self):
@@ -125,27 +159,29 @@ class CGRPO:
             old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch in generator:
 
 
-                self.actor_critic.act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
-                actions_log_prob_batch = self.actor_critic.get_actions_log_prob(actions_batch)
-                value_batch = self.actor_critic.evaluate(critic_obs_batch, masks=masks_batch, hidden_states=hid_states_batch[1])
-                mu_batch = self.actor_critic.action_mean
-                sigma_batch = self.actor_critic.action_std
-                entropy_batch = self.actor_critic.entropy
+                # as a sanity check, arbitrarily use/update one policy for now to make sure everything works ok
+                ARBITRARY_POLICY_INDEX = 0
+                self.actor_critics[ARBITRARY_POLICY_INDEX].act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
+                actions_log_prob_batch = self.actor_critics[ARBITRARY_POLICY_INDEX].get_actions_log_prob(actions_batch)
+                value_batch = self.actor_critics[ARBITRARY_POLICY_INDEX].evaluate(critic_obs_batch, masks=masks_batch, hidden_states=hid_states_batch[1])
+                # mu_batch = self.actor_critic.action_mean
+                # sigma_batch = self.actor_critic.action_std
+                # entropy_batch = self.actor_critic.entropy
 
                 # KL
-                if self.desired_kl != None and self.schedule == 'adaptive':
-                    with torch.inference_mode():
-                        kl = torch.sum(
-                            torch.log(sigma_batch / old_sigma_batch + 1.e-5) + (torch.square(old_sigma_batch) + torch.square(old_mu_batch - mu_batch)) / (2.0 * torch.square(sigma_batch)) - 0.5, axis=-1)
-                        kl_mean = torch.mean(kl)
+                # if self.desired_kl != None and self.schedule == 'adaptive':
+                #     with torch.inference_mode():
+                #         kl = torch.sum(
+                #             torch.log(sigma_batch / old_sigma_batch + 1.e-5) + (torch.square(old_sigma_batch) + torch.square(old_mu_batch - mu_batch)) / (2.0 * torch.square(sigma_batch)) - 0.5, axis=-1)
+                #         kl_mean = torch.mean(kl)
 
-                        if kl_mean > self.desired_kl * 2.0:
-                            self.learning_rate = max(1e-5, self.learning_rate / 1.5)
-                        elif kl_mean < self.desired_kl / 2.0 and kl_mean > 0.0:
-                            self.learning_rate = min(1e-2, self.learning_rate * 1.5)
+                #         if kl_mean > self.desired_kl * 2.0:
+                #             self.learning_rate = max(1e-5, self.learning_rate / 1.5)
+                #         elif kl_mean < self.desired_kl / 2.0 and kl_mean > 0.0:
+                #             self.learning_rate = min(1e-2, self.learning_rate * 1.5)
                         
-                        for param_group in self.optimizer.param_groups:
-                            param_group['lr'] = self.learning_rate
+                #         for param_group in self.optimizer.param_groups:
+                #             param_group['lr'] = self.learning_rate
 
 
                 # Surrogate loss
@@ -165,12 +201,14 @@ class CGRPO:
                 else:
                     value_loss = (returns_batch - value_batch).pow(2).mean()
 
-                loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
+                # loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
+                loss = surrogate_loss + self.value_loss_coef * value_loss
 
                 # Gradient step
                 self.optimizer.zero_grad()
                 loss.backward()
-                nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
+                for actor_critic in self.actor_critics:
+                    nn.utils.clip_grad_norm_(actor_critic.parameters(), self.max_grad_norm)
                 self.optimizer.step()
 
                 mean_value_loss += value_loss.item()

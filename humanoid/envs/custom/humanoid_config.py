@@ -309,6 +309,8 @@ class XBotLCfgCGRPO(LeggedRobotCfgPPO):
         critic_hidden_dims = [768, 256, 128]
 
     class algorithm(LeggedRobotCfgPPO.algorithm):
+        num_policies = 8  # num CGRPO policies (--num_envs flag expected to be divisible by this)
+
         entropy_coef = 0.001
         learning_rate = 1e-5
         num_learning_epochs = 2
