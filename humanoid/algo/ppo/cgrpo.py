@@ -99,8 +99,8 @@ class CGRPO:
             actor_critic.train()
 
     def act(self, obs, critic_obs):  # all (num_envs, ...)
-        split_obs = obs.split(self.num_policies, dim=0)
-        critic_obs = critic_obs.split(self.num_policies, dim=0)
+        split_obs = obs.chunk(self.num_policies, dim=0)
+        critic_obs = critic_obs.chunk(self.num_policies, dim=0)
 
         # Compute the actions and values
         self.transition.actions = torch.cat([
@@ -113,7 +113,7 @@ class CGRPO:
         ], dim=0).detach()
         self.transition.actions_log_prob = torch.cat([
             self.actor_critics[i].get_actions_log_prob(a)
-            for i, a in enumerate(self.transition.actions.split(self.num_policies, dim=0))
+            for i, a in enumerate(self.transition.actions.chunk(self.num_policies, dim=0))
         ], dim=0).detach()
         # NOTE -- I believe action_mean and action_sigma are only used in computation for the KL
         # learning rate computation (which we're omitting), so no huge downstream impact of doing this
@@ -146,7 +146,7 @@ class CGRPO:
     def compute_returns(self, last_critic_obs):  # (num_envs, ...)
         last_values= torch.cat([
             self.actor_critics[i].evaluate(o)
-            for i, o in enumerate(last_critic_obs.split(self.num_policies, dim=0))
+            for i, o in enumerate(last_critic_obs.chunk(self.num_policies, dim=0))
         ], dim=0).detach()
         self.storage.compute_returns(last_values, self.gamma, self.lam)
 
