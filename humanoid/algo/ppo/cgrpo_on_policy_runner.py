@@ -46,7 +46,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 class CGRPOOnPolicyRunner:
 
-    def __init__(self, envs: list[VecEnv], train_cfg, log_dir=None, device="cpu"):
+    def __init__(self, envs, train_cfg, log_dir=None, device="cpu"):
 
         self.num_policies = train_cfg["num_policies"]
         self.cfg = train_cfg["runner"]
@@ -67,7 +67,7 @@ class CGRPOOnPolicyRunner:
         else:
             num_critic_obs = self.envs[0].num_obs
         actor_critic_class = eval(self.cfg["policy_class_name"])  # ActorCritic
-        actor_critics: list[ActorCritic] = [
+        actor_critics = [
             actor_critic_class(
                 self.envs[0].num_obs, num_critic_obs, self.envs[0].num_actions, **self.policy_cfg
             ).to(self.device)
