@@ -30,8 +30,20 @@
 # Copyright (c) 2024 Beijing RobotEra TECHNOLOGY CO.,LTD. All rights reserved.
 
 
-from .ppo import PPO
-from .on_policy_runner import OnPolicyRunner
-from .cgrpo_on_policy_runner import CGRPOOnPolicyRunner
-from .actor_critic import ActorCritic
-from .rollout_storage import RolloutStorage
+from humanoid.envs import *
+from humanoid.utils import get_args, task_registry
+
+def train(args):
+    assert args.task == 'humanoid_cgrpo'  # not best practice but works
+    
+    num_policies = XBotLCfgCGRPO.num_policies  # also not best practice but works
+
+    envs = [task_registry.make_env(name=args.task, args=args)[0] for _ in range(num_policies)]
+    # `envs` is simply passed into the runner class (CGRPOOnPolicyRunner) and not otherwise used by `make_alg_runner`, so
+    # should be fine to pass in a list of envs instead of one
+    ppo_runner, train_cfg = task_registry.make_alg_runner(env=envs, name=args.task, args=args)
+    ppo_runner.learn(num_learning_iterations=train_cfg.runner.max_iterations, init_at_random_ep_len=True)
+
+if __name__ == '__main__':
+    args = get_args()
+    train(args)
