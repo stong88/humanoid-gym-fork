@@ -37,7 +37,6 @@ from .actor_critic import ActorCritic
 from .rollout_storage import RolloutStorage
 
 class CGRPO:
-    actor_critics: list[ActorCritic]
     def __init__(self,
                  actor_critics,
                  num_policies=6,  # CGRPO-specific
