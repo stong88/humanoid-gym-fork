@@ -70,7 +70,7 @@ class CGRPO:
         
         self.storage = None # initialized later
         self.optimizers = [
-            optim.Adam(self.actor_critic[i].parameters(), lr=learning_rate)
+            optim.Adam(self.actor_critics[i].parameters(), lr=learning_rate)
             for i in range(num_policies)
         ]
         self.transition = RolloutStorage.Transition()
@@ -205,11 +205,12 @@ class CGRPO:
                 loss = surrogate_loss + self.value_loss_coef * value_loss
 
                 # Gradient step
-                self.optimizer.zero_grad()
+                for i in range(self.num_policies):
+                    self.optimizers[i].zero_grad()
                 loss.backward()
-                for actor_critic in self.actor_critics:
-                    nn.utils.clip_grad_norm_(actor_critic.parameters(), self.max_grad_norm)
-                self.optimizer.step()
+                for i in range(self.num_policies):
+                    nn.utils.clip_grad_norm_(self.actor_critics[i].parameters(), self.max_grad_norm)
+                    self.optimizers[i].step()
 
                 mean_value_loss += value_loss.item()
                 mean_surrogate_loss += surrogate_loss.item()
