@@ -33,6 +33,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+from sklearn.cluster import KMeans
+
 from .actor_critic import ActorCritic
 from .rollout_storage import RolloutStorage
 
@@ -149,8 +151,34 @@ class CGRPO:
             for i, o in enumerate(last_critic_obs.chunk(self.num_policies, dim=0))
         ], dim=0).detach()
         self.storage.compute_returns(last_values, self.gamma, self.lam)
+    
+    def _compute_cgrpo_kmeans(self):
+        features = torch.zeros(self.num_policies, 3)  # recall we exclude KL divergence from \phi's
+        
+        returns = self.storage.returns.mean(dim=0)  # (num_envs, 1)
+        returns = returns.chunk(self.num_policies, dim=0)  # tuple of tensors (num_envs/num_policies, 1)
+        returns = torch.tensor([r.mean() for r in returns])  # (num_policies,)
+        features[:, 0] = returns
+
+        entropies = torch.tensor([  # (num_policies,)
+            self.actor_critics[i].entropy.mean()
+            for i in range(self.num_policies)
+        ])
+        features[:, 1] = entropies
+
+        variances = torch.tensor([ # (num_policies,)
+            self.actor_critics[i].distribution.variance.mean()
+            for i in range(self.num_policies)
+        ])
+        features[:, 2] = variances
+        
+        kmeans = KMeans(n_clusters=_, random_state=0).fit(features.numpy())
+        kmeans.labels_
+
 
     def update(self):
+        self._compute_cgrpo_kmeans()  # TODO -- remove
+
         mean_value_loss = 0
         mean_surrogate_loss = 0
 
