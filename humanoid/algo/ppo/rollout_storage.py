@@ -211,3 +211,40 @@ class RolloutStorage:
             old_sigma_batch = self.sigma[:, start:end]
             yield obs_batch, critic_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
                     old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
+    
+    def cgrpo_mini_batch_generator(self, policy_labels, num_kmeans_groups):
+        num_policies = len(policy_labels)
+
+        num_envs_per_policy = self.num_envs / num_policies
+
+        policy_labels_all_envs = policy_labels.repeat_interleave(num_envs_per_policy)  # (num_envs,)
+
+        assert policy_labels_all_envs.shape[0] == self.num_envs  # Requires self.num_envs % num_policies == 0
+        
+        if self.privileged_observations is not None:
+            critic_observations = self.privileged_observations
+        else:
+            critic_observations = self.observations
+        
+
+        for i in range(num_kmeans_groups):
+            group_indices = (policy_labels_all_envs == i).nonzero()
+
+            group_returns = self.returns[:, group_indices]
+            normalized_returns = (group_returns - group_returns.mean()) / (group_returns.std() + 1e-8)
+            normalized_summed_returns = torch.zeros(normalized_returns.shape, device=self.device)
+            for i in reversed(range(normalized_returns.shape[0] - 1)):
+                normalized_summed_returns[i] = normalized_returns[i] + normalized_returns[i + 1]
+
+            # Return dims should be (num_transitions_per_env, NUM_GROUPS, ...)
+            obs_batch = self.observations[:, group_indices]
+            critic_observations_batch = critic_observations[:, group_indices]
+            actions_batch = self.actions[:, group_indices]
+            target_values_batch = self.values[:, group_indices]
+            returns_batch = normalized_summed_returns
+            old_actions_log_prob_batch = self.actions_log_prob[:, group_indices]
+            advantages_batch = self.advantages[:, group_indices]
+            old_mu_batch = self.mu[:, group_indices]
+            old_sigma_batch = self.sigma[:, group_indices]
+            yield obs_batch, critic_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
+                    old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None

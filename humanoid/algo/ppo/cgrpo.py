@@ -177,42 +177,36 @@ class CGRPO:
         features[:, 2] = variances
         
         kmeans = KMeans(n_clusters=self.num_kmeans_groups, random_state=0).fit(features.numpy())
-        kmeans.labels_
-
-        # TODO -- add return
+        return torch.from_numpy(kmeans.labels_)  # (num_policies,)
     
-    def _compute_cgrpo_state_clusters(self):
-        features = torch.cat((  # (num_timesteps_per_env, num_envs, observation_dim + action_dim + reward_dim)
-            self.storage.observations,
-            self.storage.actions,
-            self.storage.rewards
-        ), dim=-1).reshape(self.storage.num_transitions_per_env * self.storage.num_envs, -1)
+    # def _compute_cgrpo_state_clusters(self):
+    #     features = torch.cat((  # (num_timesteps_per_env, num_envs, observation_dim + action_dim + reward_dim)
+    #         self.storage.observations,
+    #         self.storage.actions,
+    #         self.storage.rewards
+    #     ), dim=-1).cpu().detach().reshape(self.storage.num_transitions_per_env * self.storage.num_envs, -1)
 
-        clustering = DBSCAN(eps=self.dbscan_eps).fit(features.numpy())
-        clustering.labels_  # TODO -- reshape to (num_timesteps_per_env, num_envs)
-
-        # TODO -- add return
+    #     clustering = DBSCAN(eps=self.dbscan_eps).fit(features.numpy())
+    #     clustering.labels_
 
 
     def update(self):
-        self._compute_cgrpo_kmeans()  # TODO -- remove
+        policy_labels = self._compute_cgrpo_kmeans()  # (num_policies,)
 
         mean_value_loss = 0
         mean_surrogate_loss = 0
 
-        generator = self.storage.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
-        for obs_batch, critic_obs_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, \
+        generator = self.storage.group_mini_batch_generator(policy_labels, self.num_kmeans_groups)
+        total_loss = 0
+        # Per group...
+        for obs_batch, _, actions_batch, _, _, returns_batch, old_actions_log_prob_batch, \
             old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch in generator:
 
-
-                # as a sanity check, arbitrarily use/update one policy for now to make sure everything works ok
-                ARBITRARY_POLICY_INDEX = 0
-                self.actor_critics[ARBITRARY_POLICY_INDEX].act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
-                actions_log_prob_batch = self.actor_critics[ARBITRARY_POLICY_INDEX].get_actions_log_prob(actions_batch)
-                value_batch = self.actor_critics[ARBITRARY_POLICY_INDEX].evaluate(critic_obs_batch, masks=masks_batch, hidden_states=hid_states_batch[1])
+                self.actor_critic.act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])  # TODO -- change
+                actions_log_prob_batch = self.actor_critic.get_actions_log_prob(actions_batch)
                 # mu_batch = self.actor_critic.action_mean
                 # sigma_batch = self.actor_critic.action_std
-                # entropy_batch = self.actor_critic.entropy
+                entropy_batch = self.actor_critic.entropy
 
                 # KL
                 # if self.desired_kl != None and self.schedule == 'adaptive':
@@ -231,39 +225,26 @@ class CGRPO:
 
 
                 # Surrogate loss
+                # Returns shape (num_timesteps_per_env, num_groups, 1)
+                advantages_batch = returns_batch  # all work done in `group_mini_batch_generator`
+
                 ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
                 surrogate = -torch.squeeze(advantages_batch) * ratio
                 surrogate_clipped = -torch.squeeze(advantages_batch) * torch.clamp(ratio, 1.0 - self.clip_param,
                                                                                 1.0 + self.clip_param)
                 surrogate_loss = torch.max(surrogate, surrogate_clipped).mean()
 
-                # Value function loss
-                if self.use_clipped_value_loss:
-                    value_clipped = target_values_batch + (value_batch - target_values_batch).clamp(-self.clip_param,
-                                                                                                    self.clip_param)
-                    value_losses = (value_batch - returns_batch).pow(2)
-                    value_losses_clipped = (value_clipped - returns_batch).pow(2)
-                    value_loss = torch.max(value_losses, value_losses_clipped).mean()
-                else:
-                    value_loss = (returns_batch - value_batch).pow(2).mean()
-
-                # loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
-                loss = surrogate_loss + self.value_loss_coef * value_loss
-
-                # Gradient step
-                for i in range(self.num_policies):
-                    self.optimizers[i].zero_grad()
-                loss.backward()
-                for i in range(self.num_policies):
-                    nn.utils.clip_grad_norm_(self.actor_critics[i].parameters(), self.max_grad_norm)
-                    self.optimizers[i].step()
-
-                mean_value_loss += value_loss.item()
+                total_loss = total_loss + (surrogate_loss - self.entropy_coef * entropy_batch.mean())
                 mean_surrogate_loss += surrogate_loss.item()
 
+        # Gradient step
+        self.optimizer.zero_grad()
+        total_loss.backward()
+        nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
+        self.optimizer.step()
+
         num_updates = self.num_learning_epochs * self.num_mini_batches
-        mean_value_loss /= num_updates
         mean_surrogate_loss /= num_updates
         self.storage.clear()
 
-        return mean_value_loss, mean_surrogate_loss
+        return 0, mean_surrogate_loss  # keep 0 as placeholder for mean_value_loss for compatability with original PPO return type
