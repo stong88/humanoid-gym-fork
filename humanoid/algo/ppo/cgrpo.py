@@ -117,11 +117,11 @@ class CGRPO:
         ], dim=0).detach()
         # NOTE -- I believe action_mean and action_sigma are only used in computation for the KL
         # learning rate computation (which we're omitting), so no huge downstream impact of doing this
-        self.transition.action_mean = torch.tensor([
+        self.transition.action_mean = torch.cat([
             self.actor_critics[i].action_mean
             for i in range(self.num_policies)
         ]).mean().detach()
-        self.transition.action_sigma = torch.tensor([
+        self.transition.action_sigma = torch.cat([
             self.actor_critics[i].action_std
             for i in range(self.num_policies)
         ]).mean().detach()
