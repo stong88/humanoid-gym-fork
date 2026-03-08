@@ -33,7 +33,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, DBSCAN
 
 from .actor_critic import ActorCritic
 from .rollout_storage import RolloutStorage
@@ -43,6 +43,7 @@ class CGRPO:
                  actor_critics,
                  num_policies=8,
                  num_kmeans_groups=2,
+                 dbscan_eps=0.5,
                  num_learning_epochs=1,
                  num_mini_batches=1,
                  clip_param=0.2,
@@ -62,6 +63,7 @@ class CGRPO:
 
         self.num_policies = num_policies
         self.num_kmeans_groups = num_kmeans_groups
+        self.dbscan_eps = dbscan_eps
         self.desired_kl = desired_kl
         self.schedule = schedule
         self.learning_rate = learning_rate
@@ -176,6 +178,20 @@ class CGRPO:
         
         kmeans = KMeans(n_clusters=self.num_kmeans_groups, random_state=0).fit(features.numpy())
         kmeans.labels_
+
+        # TODO -- add return
+    
+    def _compute_cgrpo_state_clusters(self):
+        features = torch.cat((  # (num_timesteps_per_env, num_envs, observation_dim + action_dim + reward_dim)
+            self.storage.observations,
+            self.storage.actions,
+            self.storage.rewards
+        ), dim=-1).reshape(self.storage.num_transitions_per_env * self.storage.num_envs, -1)
+
+        clustering = DBSCAN(eps=self.dbscan_eps).fit(features.numpy())
+        clustering.labels_  # TODO -- reshape to (num_timesteps_per_env, num_envs)
+
+        # TODO -- add return
 
 
     def update(self):

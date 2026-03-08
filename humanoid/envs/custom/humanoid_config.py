@@ -311,6 +311,7 @@ class XBotLCfgCGRPO(LeggedRobotCfgPPO):
     class algorithm(LeggedRobotCfgPPO.algorithm):
         num_policies = 8  # num CGRPO policies (--num_envs flag expected to be divisible by this)
         num_kmeans_groups = 2  # number of policy groups computed via kmeans
+        dbscan_eps = 0.5
 
         entropy_coef = 0.001
         learning_rate = 1e-5
