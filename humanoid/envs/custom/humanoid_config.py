@@ -301,9 +301,7 @@ class XBotLCfgGRPOOriginal(LeggedRobotCfgPPO):
 
 class XBotLCfgCGRPO(LeggedRobotCfgPPO):
     seed = 5
-    runner_class_name = 'CGRPOOnPolicyRunner'   # DWLOnPolicyRunner
-
-    num_policies = 6
+    runner_class_name = 'OnPolicyRunner'   # DWLOnPolicyRunner
 
     class policy:
         init_noise_std = 1.0

@@ -32,6 +32,5 @@
 
 from .ppo import PPO
 from .on_policy_runner import OnPolicyRunner
-from .cgrpo_on_policy_runner import CGRPOOnPolicyRunner
 from .actor_critic import ActorCritic
 from .rollout_storage import RolloutStorage

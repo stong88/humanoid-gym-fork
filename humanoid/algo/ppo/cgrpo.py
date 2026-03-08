@@ -37,9 +37,9 @@ from .actor_critic import ActorCritic
 from .rollout_storage import RolloutStorage
 
 class CGRPO:
+    actor_critic: ActorCritic
     def __init__(self,
-                 actor_critics,
-                 num_policies=6,  # CGRPO-specific
+                 actor_critic,
                  num_learning_epochs=1,
                  num_mini_batches=1,
                  clip_param=0.2,
@@ -61,16 +61,12 @@ class CGRPO:
         self.schedule = schedule
         self.learning_rate = learning_rate
 
-        self.num_policies = num_policies
-
         # PPO components
-        assert len(actor_critics) == self.num_policies
-        self.actor_critics = actor_critics
-        for actor_critic in self.actor_critics:
-            actor_critic.to(self.device)
-        self.storages = [] # initialized later
-        self.optimizers = [optim.Adam(self.actor_critics[i].parameters(), lr=learning_rate) for i in range(self.num_policies)]
-        self.transitions = [RolloutStorage.Transition() for _ in range(self.num_policies)]
+        self.actor_critic = actor_critic
+        self.actor_critic.to(self.device)
+        self.storage = None # initialized later
+        self.optimizer = optim.Adam(self.actor_critic.parameters(), lr=learning_rate)
+        self.transition = RolloutStorage.Transition()
 
         # PPO parameters
         self.clip_param = clip_param
@@ -84,66 +80,57 @@ class CGRPO:
         self.use_clipped_value_loss = use_clipped_value_loss
 
     def init_storage(self, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape):
-        for _ in range(self.num_policies):
-            self.storages.append(
-                RolloutStorage(num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape, self.device)
-            )
+        self.storage = RolloutStorage(num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape, self.device)
 
     def test_mode(self):
-        for i in range(self.num_policies):
-            self.actor_critics[i].test()
+        self.actor_critic.test()
     
     def train_mode(self):
-        for i in range(self.num_policies):
-            self.actor_critics[i].train()
+        self.actor_critic.train()
 
-    def act(self, env_index, obs, critic_obs):
+    def act(self, obs, critic_obs):
         # Compute the actions and values
-        self.transitions[env_index].actions = self.actor_critics[env_index].act(obs).detach()
-        self.transitions[env_index].values = self.actor_critics[env_index].evaluate(critic_obs).detach()
-        self.transitions[env_index].actions_log_prob = self.actor_critics[env_index].get_actions_log_prob(self.transitions[env_index].actions).detach()
-        self.transitions[env_index].action_mean = self.actor_critics[env_index].action_mean.detach()
-        self.transitions[env_index].action_sigma = self.actor_critics[env_index].action_std.detach()
+        self.transition.actions = self.actor_critic.act(obs).detach()
+        self.transition.values = self.actor_critic.evaluate(critic_obs).detach()
+        self.transition.actions_log_prob = self.actor_critic.get_actions_log_prob(self.transition.actions).detach()
+        self.transition.action_mean = self.actor_critic.action_mean.detach()
+        self.transition.action_sigma = self.actor_critic.action_std.detach()
         # need to record obs and critic_obs before env.step()
-        self.transitions[env_index].observations = obs
-        self.transitions[env_index].critic_observations = critic_obs
-        return self.transitions[env_index].actions
+        self.transition.observations = obs
+        self.transition.critic_observations = critic_obs
+        return self.transition.actions
     
-    def process_env_step(self, env_index, rewards, dones, infos):
-        self.transitions[env_index].rewards = rewards.clone()
-        self.transitions[env_index].dones = dones
+    def process_env_step(self, rewards, dones, infos):
+        self.transition.rewards = rewards.clone()
+        self.transition.dones = dones
         # Bootstrapping on time outs
         if 'time_outs' in infos:
-            self.transitions[env_index].rewards += self.gamma * torch.squeeze(self.transitions[env_index].values * infos['time_outs'].unsqueeze(1).to(self.device), 1)
+            self.transition.rewards += self.gamma * torch.squeeze(self.transition.values * infos['time_outs'].unsqueeze(1).to(self.device), 1)
 
         # Record the transition
-        self.storages[env_index].add_transitions(self.transitions[env_index])
-        self.transitions[env_index].clear()
-        self.actor_critics[env_index].reset(dones)
+        self.storage.add_transitions(self.transition)
+        self.transition.clear()
+        self.actor_critic.reset(dones)
     
-    def compute_returns(self, env_index, last_critic_obs):
-        last_values = self.actor_critics[env_index].evaluate(last_critic_obs).detach()
-        self.storages[env_index].compute_returns(last_values, self.gamma, self.lam)
+    def compute_returns(self, last_critic_obs):
+        last_values= self.actor_critic.evaluate(last_critic_obs).detach()
+        self.storage.compute_returns(last_values, self.gamma, self.lam)
 
     def update(self):
         mean_value_loss = 0
         mean_surrogate_loss = 0
 
-        # As a sanity check, we arbitrarily choose one specific policy to update and ensure that everything's
-        # working correctly. Later, we'll change this to actually implement cgrpo
-        ARBITRARY_ENV_INDEX = 0
-
-        generator = self.storages[ARBITRARY_ENV_INDEX].mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
+        generator = self.storage.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
         for obs_batch, critic_obs_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, \
             old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch in generator:
 
 
-                self.actor_critics[ARBITRARY_ENV_INDEX].act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
-                actions_log_prob_batch = self.actor_critics[ARBITRARY_ENV_INDEX].get_actions_log_prob(actions_batch)
-                value_batch = self.actor_critics[ARBITRARY_ENV_INDEX].evaluate(critic_obs_batch, masks=masks_batch, hidden_states=hid_states_batch[1])
-                mu_batch = self.actor_critics[ARBITRARY_ENV_INDEX].action_mean
-                sigma_batch = self.actor_critics[ARBITRARY_ENV_INDEX].action_std
-                entropy_batch = self.actor_critics[ARBITRARY_ENV_INDEX].entropy
+                self.actor_critic.act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
+                actions_log_prob_batch = self.actor_critic.get_actions_log_prob(actions_batch)
+                value_batch = self.actor_critic.evaluate(critic_obs_batch, masks=masks_batch, hidden_states=hid_states_batch[1])
+                mu_batch = self.actor_critic.action_mean
+                sigma_batch = self.actor_critic.action_std
+                entropy_batch = self.actor_critic.entropy
 
                 # KL
                 if self.desired_kl != None and self.schedule == 'adaptive':
@@ -157,7 +144,7 @@ class CGRPO:
                         elif kl_mean < self.desired_kl / 2.0 and kl_mean > 0.0:
                             self.learning_rate = min(1e-2, self.learning_rate * 1.5)
                         
-                        for param_group in self.optimizers[ARBITRARY_ENV_INDEX].param_groups:
+                        for param_group in self.optimizer.param_groups:
                             param_group['lr'] = self.learning_rate
 
 
@@ -181,10 +168,10 @@ class CGRPO:
                 loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
 
                 # Gradient step
-                self.optimizers[ARBITRARY_ENV_INDEX].zero_grad()
+                self.optimizer.zero_grad()
                 loss.backward()
-                nn.utils.clip_grad_norm_(self.actor_critics[ARBITRARY_ENV_INDEX].parameters(), self.max_grad_norm)
-                self.optimizers[ARBITRARY_ENV_INDEX].step()
+                nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
+                self.optimizer.step()
 
                 mean_value_loss += value_loss.item()
                 mean_surrogate_loss += surrogate_loss.item()
@@ -192,7 +179,6 @@ class CGRPO:
         num_updates = self.num_learning_epochs * self.num_mini_batches
         mean_value_loss /= num_updates
         mean_surrogate_loss /= num_updates
-        for i in range(self.num_policies):
-            self.storages[i].clear()
+        self.storage.clear()
 
         return mean_value_loss, mean_surrogate_loss
