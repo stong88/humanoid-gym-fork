@@ -100,7 +100,7 @@ class CGRPO:
 
     def act(self, obs, critic_obs):  # all (num_envs, ...)
         split_obs = obs.chunk(self.num_policies, dim=0)
-        critic_obs = critic_obs.chunk(self.num_policies, dim=0)
+        split_critic_obs = critic_obs.chunk(self.num_policies, dim=0)
 
         # Compute the actions and values
         self.transition.actions = torch.cat([
@@ -109,7 +109,7 @@ class CGRPO:
         ], dim=0).detach()
         self.transition.values = torch.cat([
             self.actor_critics[i].evaluate(co)
-            for i, co in enumerate(critic_obs)
+            for i, co in enumerate(split_critic_obs)
         ], dim=0).detach()
         self.transition.actions_log_prob = torch.cat([
             self.actor_critics[i].get_actions_log_prob(a)
