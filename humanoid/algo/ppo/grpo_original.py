@@ -41,6 +41,7 @@ class GRPOOriginal(PPO):
     actor_critic: ActorCritic
     def __init__(self,
                  actor_critic,
+                 num_envs_per_group=8,
                  num_learning_epochs=1,
                  num_mini_batches=1,
                  clip_param=0.2,
@@ -56,6 +57,7 @@ class GRPOOriginal(PPO):
 
         self.device = device
 
+        self.num_envs_per_group = num_envs_per_group
         self.desired_kl = desired_kl
         self.schedule = schedule
         self.learning_rate = learning_rate
@@ -81,7 +83,7 @@ class GRPOOriginal(PPO):
     def update(self):
         mean_surrogate_loss = 0
 
-        generator = self.storage.group_mini_batch_generator()
+        generator = self.storage.group_mini_batch_generator(self.num_envs_per_group)
         total_loss = 0
         # Per group...
         for obs_batch, _, actions_batch, _, _, returns_batch, old_actions_log_prob_batch, \

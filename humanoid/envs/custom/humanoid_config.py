@@ -270,6 +270,8 @@ class XBotLCfgGRPOOriginal(LeggedRobotCfgPPO):
         critic_hidden_dims = [768, 256, 128]
 
     class algorithm:
+        num_envs_per_group = 8
+
         # training params
         clip_param = 0.2
         schedule = 'adaptive' # could be adaptive, fixed

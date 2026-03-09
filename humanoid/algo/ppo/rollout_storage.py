@@ -181,9 +181,8 @@ class RolloutStorage:
                 yield obs_batch, critic_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
                        old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
     
-    def group_mini_batch_generator(self):
-        NUM_ENVS_PER_GROUP = 8  # TODO when time, move this into config class...putting this here for simplicity for now
-        assert self.num_envs % NUM_ENVS_PER_GROUP == 0, "For simplicity, num_envs should be divisible by GRPO's NUM_ENVS_PER_GROUP"
+    def group_mini_batch_generator(self, num_envs_per_group):
+        assert self.num_envs % num_envs_per_group == 0, "For simplicity, num_envs should be divisible by GRPO's NUM_ENVS_PER_GROUP"
         
         if self.privileged_observations is not None:
             critic_observations = self.privileged_observations
@@ -191,9 +190,9 @@ class RolloutStorage:
             critic_observations = self.observations
         
 
-        for i in range(self.num_envs // NUM_ENVS_PER_GROUP):
-            start = i * NUM_ENVS_PER_GROUP
-            end = (i+1) * NUM_ENVS_PER_GROUP
+        for i in range(self.num_envs // num_envs_per_group):
+            start = i * num_envs_per_group
+            end = (i+1) * num_envs_per_group
             
             group_returns = self.returns[:, start:end]
             normalized_returns = (group_returns - group_returns.mean()) / (group_returns.std() + 1e-8)
