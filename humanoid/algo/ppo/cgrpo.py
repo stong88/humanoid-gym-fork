@@ -199,14 +199,25 @@ class CGRPO:
         generator = self.storage.cgrpo_mini_batch_generator(policy_labels, self.num_kmeans_groups)
         total_loss = 0
         # Per group...
-        for obs_batch, _, actions_batch, _, _, returns_batch, old_actions_log_prob_batch, \
-            old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch in generator:
+        for group_index, (obs_batch, _, actions_batch, _, _, returns_batch, old_actions_log_prob_batch, \
+            old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch) in enumerate(generator):
 
-                self.actor_critic.act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])  # TODO -- change
-                actions_log_prob_batch = self.actor_critic.get_actions_log_prob(actions_batch)
+                actor_critic_indices = (policy_labels == group_index).nonzero()
+                # This assumes that the batch orders envs in the same chunked order as policies, e.g. if
+                # `actor_critic_indices` has policies [1,3], then `obs_batch` is chunked as (..., [all 1's, all 3's], ...) (?)
+                chunked_obs_batches = obs_batch.chunk(len(actor_critic_indices), dim=1)  # tuples of tensors (num_timesteps_per_env, ...)
+                chunked_masks_batch = masks_batch.chunk(len(actor_critic_indices), dim=1)  # tuples of tensors (num_timesteps_per_env, ...)
+                chunked_hidden_states = hid_states_batch[0].chunk(len(actor_critic_indices), dim=1)  # tuples of tensors (num_timesteps_per_env, ...)
+                for i, actor_critic_index in enumerate(actor_critic_indices):
+                    self.actor_critics[actor_critic_index].act(chunked_obs_batches[i], masks=chunked_masks_batch[i], hidden_states=chunked_hidden_states[i])
+                chunked_actions_batch = actions_batch.chunk(len(actor_critic_index), dim=1)
+                actions_log_prob_batch = torch.cat([  # (num_timesteps_per_env, num envs in this group, 1)
+                    self.actor_critics[actor_critic_index].get_actions_log_prob(chunked_actions_batch[i])
+                    for i, actor_critic_index in enumerate(actor_critic_indices)
+                ], dim=1)
                 # mu_batch = self.actor_critic.action_mean
                 # sigma_batch = self.actor_critic.action_std
-                entropy_batch = self.actor_critic.entropy
+                entropy_batch = torch.tensor([self.actor_critics[i].entropy for i in actor_critic_indices]).mean()
 
                 # KL
                 # if self.desired_kl != None and self.schedule == 'adaptive':
