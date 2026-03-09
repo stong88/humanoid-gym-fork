@@ -248,10 +248,12 @@ class CGRPO:
                 mean_surrogate_loss += surrogate_loss.item()
 
         # Gradient step
-        self.optimizer.zero_grad()
+        for i in range(self.num_policies):
+            self.optimizers[i].zero_grad()
         total_loss.backward()
-        nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
-        self.optimizer.step()
+        for i in range(self.num_policies):
+            nn.utils.clip_grad_norm_(self.actor_critics[i].parameters(), self.max_grad_norm)
+            self.optimizers[i].step()
 
         num_updates = self.num_learning_epochs * self.num_mini_batches
         mean_surrogate_loss /= num_updates
