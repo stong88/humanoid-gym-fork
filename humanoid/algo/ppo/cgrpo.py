@@ -206,10 +206,9 @@ class CGRPO:
                 # This assumes that the batch orders envs in the same chunked order as policies, e.g. if
                 # `actor_critic_indices` has policies [1,3], then `obs_batch` is chunked as (..., [all 1's, all 3's], ...) (?)
                 chunked_obs_batches = obs_batch.chunk(len(actor_critic_indices), dim=1)  # tuples of tensors (num_timesteps_per_env, ...)
-                chunked_masks_batch = masks_batch.chunk(len(actor_critic_indices), dim=1)  # tuples of tensors (num_timesteps_per_env, ...)
-                chunked_hidden_states = hid_states_batch[0].chunk(len(actor_critic_indices), dim=1)  # tuples of tensors (num_timesteps_per_env, ...)
                 for i, actor_critic_index in enumerate(actor_critic_indices):
-                    self.actor_critics[actor_critic_index].act(chunked_obs_batches[i], masks=chunked_masks_batch[i], hidden_states=chunked_hidden_states[i])
+                    # Note that `masks` and `hidden_states` are hardcoded in rollout_storage to be None, so this is functionally equivalent
+                    self.actor_critics[actor_critic_index].act(chunked_obs_batches[i], masks=None, hidden_states=None)
                 chunked_actions_batch = actions_batch.chunk(len(actor_critic_index), dim=1)
                 actions_log_prob_batch = torch.cat([  # (num_timesteps_per_env, num envs in this group, 1)
                     self.actor_critics[actor_critic_index].get_actions_log_prob(chunked_actions_batch[i])
