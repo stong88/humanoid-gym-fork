@@ -215,7 +215,8 @@ class RolloutStorage:
     def cgrpo_mini_batch_generator(self, policy_labels, num_kmeans_groups):
         num_policies = len(policy_labels)
 
-        num_envs_per_policy = self.num_envs / num_policies
+        assert self.num_envs % num_policies == 0
+        num_envs_per_policy = self.num_envs // num_policies
 
         policy_labels_all_envs = policy_labels.repeat_interleave(num_envs_per_policy)  # (num_envs,)
 
