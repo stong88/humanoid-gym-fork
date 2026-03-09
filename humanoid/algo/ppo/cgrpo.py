@@ -216,7 +216,7 @@ class CGRPO:
                 ], dim=1)
                 # mu_batch = self.actor_critic.action_mean
                 # sigma_batch = self.actor_critic.action_std
-                entropy_batch = torch.tensor([self.actor_critics[i].entropy for i in actor_critic_indices]).mean()
+                entropy_batch = torch.tensor([self.actor_critics[i].entropy.mean() for i in actor_critic_indices]).mean()
 
                 # KL
                 # if self.desired_kl != None and self.schedule == 'adaptive':
