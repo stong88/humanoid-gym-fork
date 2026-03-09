@@ -196,7 +196,7 @@ class CGRPO:
         mean_value_loss = 0
         mean_surrogate_loss = 0
 
-        generator = self.storage.group_mini_batch_generator(policy_labels, self.num_kmeans_groups)
+        generator = self.storage.cgrpo_mini_batch_generator(policy_labels, self.num_kmeans_groups)
         total_loss = 0
         # Per group...
         for obs_batch, _, actions_batch, _, _, returns_batch, old_actions_log_prob_batch, \
