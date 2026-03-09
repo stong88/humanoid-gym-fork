@@ -209,9 +209,9 @@ class CGRPO:
                 for i, actor_critic_index in enumerate(actor_critic_indices):
                     # Note that `masks` and `hidden_states` are hardcoded in rollout_storage to be None, so this is functionally equivalent
                     self.actor_critics[actor_critic_index].act(chunked_obs_batches[i], masks=None, hidden_states=None)
-                chunked_actions_batch = actions_batch.chunk(len(actor_critic_index), dim=1)
+                chunked_actions_batches = actions_batch.chunk(len(actor_critic_indices), dim=1)
                 actions_log_prob_batch = torch.cat([  # (num_timesteps_per_env, num envs in this group, 1)
-                    self.actor_critics[actor_critic_index].get_actions_log_prob(chunked_actions_batch[i])
+                    self.actor_critics[actor_critic_index].get_actions_log_prob(chunked_actions_batches[i])
                     for i, actor_critic_index in enumerate(actor_critic_indices)
                 ], dim=1)
                 # mu_batch = self.actor_critic.action_mean
