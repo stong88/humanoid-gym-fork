@@ -229,7 +229,7 @@ class RolloutStorage:
         
 
         for i in range(num_kmeans_groups):
-            group_indices = (policy_labels_all_envs == i).nonzero()
+            group_indices = (policy_labels_all_envs == i).nonzero().squeeze()  # (num envs in group,)
 
             group_returns = self.returns[:, group_indices]
             normalized_returns = (group_returns - group_returns.mean()) / (group_returns.std() + 1e-8)
