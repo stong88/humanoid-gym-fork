@@ -37,7 +37,7 @@ class ActorCritic(nn.Module):
     def __init__(self,  num_actor_obs,
                         num_critic_obs,
                         num_actions,
-                        num_bins=100,
+                        num_bins=15,
                         actor_hidden_dims=[256, 256, 256],
                         critic_hidden_dims=[256, 256, 256],
                         init_noise_std=1.0,
@@ -106,7 +106,7 @@ class ActorCritic(nn.Module):
     
     @property
     def entropy(self):
-        return self.distribution.entropy().sum(dim=-1)
+        return self.distribution.entropy().mean(dim=-1)
     
     @property
     def action_logits(self):
