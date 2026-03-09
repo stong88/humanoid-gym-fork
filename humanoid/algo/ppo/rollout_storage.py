@@ -190,21 +190,23 @@ class RolloutStorage:
         else:
             critic_observations = self.observations
         
-        normalized_returns = (self.returns - self.returns.mean()) / (self.returns.std() + 1e-8)
-        normalized_summed_returns = torch.zeros(normalized_returns.shape, device=self.device)
-        for i in reversed(range(normalized_returns.shape[0] - 1)):
-            normalized_summed_returns[i] = normalized_returns[i] + normalized_returns[i + 1]
 
         for i in range(self.num_envs // NUM_ENVS_PER_GROUP):
             start = i * NUM_ENVS_PER_GROUP
             end = (i+1) * NUM_ENVS_PER_GROUP
+            
+            group_returns = self.returns[:, start:end]
+            normalized_returns = (group_returns - group_returns.mean()) / (group_returns.std() + 1e-8)
+            normalized_summed_returns = torch.zeros(normalized_returns.shape, device=self.device)
+            for i in reversed(range(normalized_returns.shape[0] - 1)):
+                normalized_summed_returns[i] = normalized_returns[i] + normalized_returns[i + 1]
 
             # Return dims should be (num_transitions_per_env, NUM_GROUPS, ...)
             obs_batch = self.observations[:, start:end]
             critic_observations_batch = critic_observations[:, start:end]
             actions_batch = self.actions[:, start:end]
             target_values_batch = self.values[:, start:end]
-            returns_batch = normalized_summed_returns[:, start:end]
+            returns_batch = normalized_summed_returns
             old_actions_log_prob_batch = self.actions_log_prob[:, start:end]
             advantages_batch = self.advantages[:, start:end]
             old_mu_batch = self.mu[:, start:end]
