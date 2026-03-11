@@ -1,33 +1,3 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-FileCopyrightText: Copyright (c) 2021 ETH Zurich, Nikita Rudin
-# SPDX-License-Identifier: BSD-3-Clause
-# 
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice, this
-# list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# 3. Neither the name of the copyright holder nor the names of its
-# contributors may be used to endorse or promote products derived from
-# this software without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Copyright (c) 2024 Beijing RobotEra TECHNOLOGY CO.,LTD. All rights reserved.
 
 import os
 import cv2
@@ -35,7 +5,7 @@ import numpy as np
 from isaacgym import gymapi
 from humanoid import LEGGED_GYM_ROOT_DIR
 
-# import isaacgym
+
 from humanoid.envs import *
 from humanoid.utils import  get_args, export_policy_as_jit, task_registry, Logger
 from isaacgym.torch_utils import *
@@ -46,11 +16,15 @@ from datetime import datetime
 
 
 def play(args):
+
+    args.task = "humanoid_grpo"
+    print(f"Playing task: {args.task}")
+    
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
-    # override some parameters for testing
+
     env_cfg.env.num_envs = min(env_cfg.env.num_envs, 1)
     env_cfg.sim.max_gpu_contact_pairs = 2**10
-    # env_cfg.terrain.mesh_type = 'trimesh'
+
     env_cfg.terrain.mesh_type = 'plane'
     env_cfg.terrain.num_rows = 5
     env_cfg.terrain.num_cols = 5
@@ -66,18 +40,21 @@ def play(args):
     train_cfg.seed = 123145
     print("train_cfg.runner_class_name:", train_cfg.runner_class_name)
 
-    # prepare environment
+
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
-    env.set_camera(env_cfg.viewer.pos, env_cfg.viewer.lookat)
+    
+
+    if not args.headless:
+        env.set_camera(env_cfg.viewer.pos, env_cfg.viewer.lookat)
 
     obs = env.get_observations()
 
-    # load policy
+
     train_cfg.runner.resume = True
     ppo_runner, train_cfg = task_registry.make_alg_runner(env=env, name=args.task, args=args, train_cfg=train_cfg)
     policy = ppo_runner.get_inference_policy(device=env.device)
     
-    # export policy as a jit module (used to run it from C++)
+
     if EXPORT_POLICY:
         path = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'policies')
         export_policy_as_jit(ppo_runner.alg.actor_critic, path)
@@ -87,10 +64,15 @@ def play(args):
     robot_index = 0 # which robot is used for logging
     joint_index = 1 # which joint is used for logging
     stop_state_log = 1200 # number of steps before plotting states
+    
+
+    video = None
     if RENDER:
         camera_properties = gymapi.CameraProperties()
         camera_properties.width = 1920
         camera_properties.height = 1080
+        
+
         h1 = env.gym.create_camera_sensor(env.envs[0], camera_properties)
         camera_offset = gymapi.Vec3(1, -1, 0.5)
         camera_rotation = gymapi.Quat.from_axis_angle(gymapi.Vec3(-0.3, 0.2, 1),
@@ -105,10 +87,18 @@ def play(args):
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         video_dir = os.path.join(LEGGED_GYM_ROOT_DIR, 'videos')
         experiment_dir = os.path.join(LEGGED_GYM_ROOT_DIR, 'videos', train_cfg.runner.experiment_name)
+        
+
         run_name = args.run_name if args.run_name is not None else ""
         filename = datetime.now().strftime('%b%d_%H-%M-%S') + run_name + '.mp4'
         video_path = os.path.join(experiment_dir, filename)
-        os.makedirs(experiment_dir, exist_ok=True)
+        
+        if not os.path.exists(video_dir):
+            os.mkdir(video_dir)
+        if not os.path.exists(experiment_dir):
+            os.mkdir(experiment_dir)
+            
+        print(f"Recording video to: {video_path}")
         video = cv2.VideoWriter(video_path, fourcc, 50.0, (1920, 1080))
 
     for i in tqdm(range(stop_state_log)):
@@ -123,7 +113,7 @@ def play(args):
 
         obs, critic_obs, rews, dones, infos = env.step(actions.detach())
 
-        if RENDER:
+        if RENDER and video is not None:
             env.gym.fetch_results(env.sim, True)
             env.gym.step_graphics(env.sim)
             env.gym.render_all_camera_sensors(env.sim)
@@ -157,8 +147,9 @@ def play(args):
     logger.print_rewards()
     logger.plot_states()
     
-    if RENDER:
+    if RENDER and video is not None:
         video.release()
+        print("Video saved.")
 
 if __name__ == '__main__':
     EXPORT_POLICY = True

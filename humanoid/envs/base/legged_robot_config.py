@@ -235,3 +235,34 @@ class LeggedRobotCfgPPO(BaseConfig):
         load_run = -1 # -1 = last run
         checkpoint = -1 # -1 = last saved model
         resume_path = None # updated from load_run and chkpt
+class LeggedRobotCfgGRPO(LeggedRobotCfgPPO):
+    runner_class_name = 'OnPolicyRunner'
+    class policy(LeggedRobotCfgPPO.policy):
+        actor_hidden_dims = [512, 256, 128]
+        critic_hidden_dims = [] 
+
+    class algorithm(LeggedRobotCfgPPO.algorithm):
+        # GRPO params
+        clip_param = 0.2
+        entropy_coef = 0.01
+        num_learning_epochs = 5
+        num_mini_batches = 4
+        learning_rate = 1.e-3
+        schedule = 'fixed'
+        gamma = 0.99
+        lam = 0.95
+        desired_kl = 0.01
+        max_grad_norm = 1.
+        
+        # New
+        group_size = 4
+        kl_beta = 0.04
+        value_loss_coef = 0.0 
+        use_clipped_value_loss = False
+
+    class runner(LeggedRobotCfgPPO.runner):
+        policy_class_name = 'Actor'
+        algorithm_class_name = 'GRPO'
+        num_steps_per_env = 24
+        max_iterations = 1500
+

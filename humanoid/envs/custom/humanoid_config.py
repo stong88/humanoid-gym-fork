@@ -28,7 +28,7 @@
 # Copyright (c) 2024 Beijing RobotEra TECHNOLOGY CO.,LTD. All rights reserved.
 
 
-from humanoid.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
+from humanoid.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO, LeggedRobotCfgGRPO
 
 
 class XBotLCfg(LeggedRobotCfg):
@@ -259,3 +259,97 @@ class XBotLCfgPPO(LeggedRobotCfgPPO):
         load_run = -1  # -1 = last run
         checkpoint = -1  # -1 = last saved model
         resume_path = None  # updated from load_run and chkpt
+
+class XBotLCfgGRPO(LeggedRobotCfgGRPO):
+    seed = 5
+    runner_class_name = 'OnPolicyRunner'
+
+    class policy(LeggedRobotCfgGRPO.policy):
+        init_noise_std = 1.0
+        actor_hidden_dims = [512, 256, 128]
+        critic_hidden_dims = []
+
+    class algorithm(LeggedRobotCfgGRPO.algorithm):
+        entropy_coef = 0.001
+        learning_rate = 1e-5
+        num_learning_epochs = 2
+        gamma = 0.994
+        lam = 0.9
+        num_mini_batches = 4
+        
+        # Consistent with PPO settings above but adapted for GRPO
+        group_size = -1 # Use Global Batch Normalization to solve cold start
+        kl_beta = 0.01 # Slightly reduced
+
+    class runner(LeggedRobotCfgGRPO.runner):
+        policy_class_name = 'Actor'
+        algorithm_class_name = 'GRPO'
+        num_steps_per_env = 300 # Increased for MC returns
+        max_iterations = 3001
+        
+        # Logging
+        save_interval = 100
+        experiment_name = 'XBot_grpo'
+        run_name = ''
+        resume = False
+        load_run = -1
+        checkpoint = -1
+        resume_path = None
+
+
+class XBotLCfgCGRPO(XBotLCfgGRPO):
+    seed = 5
+    runner_class_name = 'OnPolicyRunner'
+
+    class policy(XBotLCfgPPO.policy):
+        init_noise_std = 1.0
+        actor_hidden_dims = [512, 256, 128]
+        critic_hidden_dims = [768, 256, 128]
+
+    class algorithm(XBotLCfgGRPO.algorithm):
+        # Keep PPO-like optimization cadence for fast policy improvement.
+        learning_rate = 2e-5
+        num_learning_epochs = 4
+        num_mini_batches = 8
+        gamma = 0.994
+        lam = 0.92
+        entropy_coef = 0.001
+        clip_param = 0.2
+        kl_beta = 0.004
+        desired_kl = 0.01
+        schedule = 'adaptive'
+        value_loss_coef = 1.0
+        use_clipped_value_loss = True
+
+        # CGRPO params
+        temporal_smoothness_coef = 0.01
+        diversity_coef = 0.003
+        num_clusters = 8
+        dbscan_eps = 0.45
+        dbscan_min_samples = 6
+        clip_var_scale = 0.3
+        min_clip_param = 0.1
+        max_clip_param = 0.3
+        state_feature_dim = 16
+        max_state_cluster_samples = 1024
+        ref_mix_alpha = 0.04
+        topk_reference = 0.2
+        state_rel_adv_coef = 0.25
+
+        # Let k-means decide policy groups directly in continuous control.
+        group_size = -1
+
+    class runner(XBotLCfgGRPO.runner):
+        policy_class_name = 'ActorCritic'
+        algorithm_class_name = 'CGRPO'
+        num_steps_per_env = 60
+        max_iterations = 3001
+
+        save_interval = 100
+        experiment_name = 'XBot_cgrpo'
+        run_name = ''
+        resume = False
+        load_run = -1
+        checkpoint = -1
+        resume_path = None
+

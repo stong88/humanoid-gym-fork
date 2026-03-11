@@ -63,3 +63,6 @@ videos
 # other
 *.egg-info
 __pycache__
+
+analysis
+images
