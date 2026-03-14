@@ -58,6 +58,7 @@ class GRPOOriginal(PPO):
         self.device = device
 
         self.num_envs_per_group = num_envs_per_group
+
         self.desired_kl = desired_kl
         self.schedule = schedule
         self.learning_rate = learning_rate
@@ -80,59 +81,84 @@ class GRPOOriginal(PPO):
 
         print(f'GRPOOriginal: clipping parameter {self.clip_param}')
 
+    def compute_returns(self, last_critic_obs):
+        returns = torch.zeros_like(self.storage.rewards)
+        intermediate_returns = torch.zeros_like(self.storage.rewards[0])
+        
+        for step in reversed(range(self.storage.num_transitions_per_env)):
+            non_terminal = 1.0 - self.storage.dones[step].float()
+            intermediate_returns = self.storage.rewards[step] + self.gamma * intermediate_returns * non_terminal
+            returns[step] = intermediate_returns
+
+        self.storage.returns = returns
+        
+        
+        num_steps_per_env, num_envs, _ = returns.shape
+        
+        assert num_envs % self.num_envs_per_group == 0, "Total envs should be evenly divisible by num_envs_per_group"
+        num_groups = num_envs // self.num_envs_per_group
+        
+        returns_grouped = returns.reshape(num_steps_per_env, num_groups, self.group_size, 1)
+        
+        group_mean = returns_grouped.mean(dim=2, keepdim=True)
+        group_std = returns_grouped.std(dim=2, keepdim=True)
+        
+        advantages_grouped = (returns_grouped - group_mean) / (group_std + 1e-6)
+        
+        self.storage.advantages = advantages_grouped.reshape(num_steps_per_env, num_envs, 1)
+
     def update(self):
+        # Identical to ppo update, but remove value computation
         mean_surrogate_loss = 0
 
-        generator = self.storage.group_mini_batch_generator(self.num_envs_per_group)
-        total_loss = 0
-        # Per group...
-        for obs_batch, _, actions_batch, _, _, returns_batch, old_actions_log_prob_batch, \
+        generator = self.storage.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
+        for obs_batch, critic_obs_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, \
             old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch in generator:
 
 
                 self.actor_critic.act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
                 actions_log_prob_batch = self.actor_critic.get_actions_log_prob(actions_batch)
-                # mu_batch = self.actor_critic.action_mean
-                # sigma_batch = self.actor_critic.action_std
+                value_batch = self.actor_critic.evaluate(critic_obs_batch, masks=masks_batch, hidden_states=hid_states_batch[1])
+                mu_batch = self.actor_critic.action_mean
+                sigma_batch = self.actor_critic.action_std
                 entropy_batch = self.actor_critic.entropy
 
                 # KL
-                # if self.desired_kl != None and self.schedule == 'adaptive':
-                #     with torch.inference_mode():
-                #         kl = torch.sum(
-                #             torch.log(sigma_batch / old_sigma_batch + 1.e-5) + (torch.square(old_sigma_batch) + torch.square(old_mu_batch - mu_batch)) / (2.0 * torch.square(sigma_batch)) - 0.5, axis=-1)
-                #         kl_mean = torch.mean(kl)
+                if self.desired_kl != None and self.schedule == 'adaptive':
+                    with torch.inference_mode():
+                        kl = torch.sum(
+                            torch.log(sigma_batch / old_sigma_batch + 1.e-5) + (torch.square(old_sigma_batch) + torch.square(old_mu_batch - mu_batch)) / (2.0 * torch.square(sigma_batch)) - 0.5, axis=-1)
+                        kl_mean = torch.mean(kl)
 
-                #         if kl_mean > self.desired_kl * 2.0:
-                #             self.learning_rate = max(1e-5, self.learning_rate / 1.5)
-                #         elif kl_mean < self.desired_kl / 2.0 and kl_mean > 0.0:
-                #             self.learning_rate = min(1e-2, self.learning_rate * 1.5)
+                        if kl_mean > self.desired_kl * 2.0:
+                            self.learning_rate = max(1e-5, self.learning_rate / 1.5)
+                        elif kl_mean < self.desired_kl / 2.0 and kl_mean > 0.0:
+                            self.learning_rate = min(1e-2, self.learning_rate * 1.5)
                         
-                #         for param_group in self.optimizer.param_groups:
-                #             param_group['lr'] = self.learning_rate
+                        for param_group in self.optimizer.param_groups:
+                            param_group['lr'] = self.learning_rate
 
 
                 # Surrogate loss
-                # Returns shape (num_timesteps_per_env, num_groups, 1)
-                advantages_batch = returns_batch  # all work done in `group_mini_batch_generator`
-
                 ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
                 surrogate = -torch.squeeze(advantages_batch) * ratio
                 surrogate_clipped = -torch.squeeze(advantages_batch) * torch.clamp(ratio, 1.0 - self.clip_param,
                                                                                 1.0 + self.clip_param)
                 surrogate_loss = torch.max(surrogate, surrogate_clipped).mean()
 
-                total_loss = total_loss + (surrogate_loss - self.entropy_coef * entropy_batch.mean())
-                mean_surrogate_loss += surrogate_loss.item()
 
-        # Gradient step
-        self.optimizer.zero_grad()
-        total_loss.backward()
-        nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
-        self.optimizer.step()
+                loss = surrogate_loss - self.entropy_coef * entropy_batch.mean()
+
+                # Gradient step
+                self.optimizer.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
+                self.optimizer.step()
+
+                mean_surrogate_loss += surrogate_loss.item()
 
         num_updates = self.num_learning_epochs * self.num_mini_batches
         mean_surrogate_loss /= num_updates
         self.storage.clear()
 
-        return 0, mean_surrogate_loss  # keep 0 as placeholder for mean_value_loss for compatability with original PPO return type
+        return 0, mean_surrogate_loss
