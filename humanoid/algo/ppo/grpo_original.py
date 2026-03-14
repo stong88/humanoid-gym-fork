@@ -98,7 +98,7 @@ class GRPOOriginal(PPO):
         assert num_envs % self.num_envs_per_group == 0, "Total envs should be evenly divisible by num_envs_per_group"
         num_groups = num_envs // self.num_envs_per_group
         
-        returns_grouped = returns.reshape(num_steps_per_env, num_groups, self.group_size, 1)
+        returns_grouped = returns.reshape(num_steps_per_env, num_groups, self.num_envs_per_group, 1)
         
         group_mean = returns_grouped.mean(dim=2, keepdim=True)
         group_std = returns_grouped.std(dim=2, keepdim=True)
