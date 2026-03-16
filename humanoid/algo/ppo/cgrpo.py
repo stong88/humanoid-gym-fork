@@ -253,9 +253,18 @@ class CGRPO:
                 #     self.actor_critics[actor_critic_index].act(obs_batch[i], masks=None, hidden_states=None)
 
 
-                mu_batch = torch.stack([self.actor_critics[i].action_mean for i in policy_indices_batch], dim=0).mean(dim=0)
-                sigma_batch = torch.stack([self.actor_critics[i].action_std for i in policy_indices_batch], dim=0).mean(dim=0)
-                entropy_batch = torch.stack([self.actor_critics[i].entropy.mean() for i in policy_indices_batch], dim=0).mean(dim=0)
+                # Weight policy statistics by the proportion of envs in minibatch that use it
+                policy_count_indices, policy_counts = torch.unique(policy_indices_batch, return_counts=True)
+                total_policies = policy_indices_batch.shape[0]
+                mu_batch = torch.stack([
+                    (c / total_policies) * self.actor_critics[i].action_mean for i, c in zip(policy_count_indices, policy_counts)
+                ], dim=0).sum(dim=0)
+                sigma_batch = torch.stack([
+                    (c / total_policies) * self.actor_critics[i].action_std for i, c in zip(policy_count_indices, policy_counts)
+                ], dim=0).sum(dim=0)
+                entropy_batch = torch.stack([
+                    (c / total_policies) * self.actor_critics[i].entropy.mean() for i, c in zip(policy_count_indices, policy_counts)
+                ], dim=0).sum(dim=0)
 
                 # KL
                 if self.desired_kl != None and self.schedule == 'adaptive':
