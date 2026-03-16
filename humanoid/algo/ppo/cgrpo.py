@@ -279,10 +279,10 @@ class CGRPO:
                 loss = surrogate_loss - self.entropy_coef * entropy_batch.mean()
 
                 # Gradient step
-                for i in range(policy_indices_batch):
+                for i in range(self.num_policies):
                     self.optimizers[i].zero_grad()
                 loss.backward()
-                for i in range(policy_indices_batch):
+                for i in range(self.num_policies):
                     nn.utils.clip_grad_norm_(self.actor_critics[i].parameters(), self.max_grad_norm)
                     self.optimizers[i].step()
 
