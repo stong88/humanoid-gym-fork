@@ -179,7 +179,7 @@ class CGRPO:
         for i in range(self.num_kmeans_groups):
             group_indices = (self.policy_labels_all_envs == i).nonzero().squeeze()  # (num_envs_in_group,) -- dims will change per k-means group
 
-            group_returns = self.returns[:, group_indices]  # (num_timesteps_per_env, num_envs_in_group)
+            group_returns = returns[:, group_indices]  # (num_timesteps_per_env, num_envs_in_group)
             normalized_returns = (group_returns - group_returns.mean()) / (group_returns.std() + 1e-8)
             advantages.append(normalized_returns)
             
