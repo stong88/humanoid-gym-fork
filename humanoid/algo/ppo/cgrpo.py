@@ -242,28 +242,32 @@ class CGRPO:
             old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch in generator:
 
                 actions_log_prob_batch = torch.zeros_like(old_actions_log_prob_batch)
+                mu_batch = torch.zeros_like(old_mu_batch)
+                sigma_batch = torch.zeros_like(old_sigma_batch)
 
                 for i in range(self.num_policies):
-                    policy_indices = policy_indices_batch == i
-                    self.actor_critics[i].act(obs_batch[policy_indices], masks=None, hidden_states=None)
-                    actions_log_prob_batch[policy_indices.nonzero().squeeze()] = self.actor_critics[i].get_actions_log_prob(actions_batch[policy_indices]).unsqueeze(dim=-1)
+                    policy_indices_mask = policy_indices_batch == i
+                    indices_of_policy = policy_indices_mask.nonzero().squeeze()
+                    
+                    self.actor_critics[i].act(obs_batch[policy_indices_mask], masks=None, hidden_states=None)
+                    actions_log_prob_batch[indices_of_policy] = self.actor_critics[i].get_actions_log_prob(actions_batch[policy_indices_mask]).unsqueeze(dim=-1)
+
+                    mu_batch[indices_of_policy] = self.actor_critics[i].action_mean
+                    sigma_batch[indices_of_policy] = self.actor_critics[i].action_std
 
                 # for i, actor_critic_index in enumerate(policy_indices_batch):
                 #     # Note that `masks` and `hidden_states` are hardcoded in rollout_storage to be None, so this is functionally equivalent
                 #     self.actor_critics[actor_critic_index].act(obs_batch[i], masks=None, hidden_states=None)
 
 
-                # Weight policy statistics by the proportion of envs in minibatch that use it
-                policy_count_indices, policy_counts = torch.unique(policy_indices_batch, return_counts=True)
-                total_policies = policy_indices_batch.shape[0]
-                mu_batch = torch.stack([
-                    (c / total_policies) * self.actor_critics[i].action_mean for i, c in zip(policy_count_indices, policy_counts)
-                ], dim=0).sum(dim=0)
-                sigma_batch = torch.stack([
-                    (c / total_policies) * self.actor_critics[i].action_std for i, c in zip(policy_count_indices, policy_counts)
-                ], dim=0).sum(dim=0)
+                # mu_batch = torch.stack([self.actor_critics[i].action_mean for i in policy_indices_batch], dim=0).mean(dim=0)
+                # sigma_batch = torch.stack([self.actor_critics[i].action_std for i in policy_indices_batch], dim=0).mean(dim=0)
+                
+                # Compute weighted sum of entropies across policies, weighted by proportion of times the policy is used
+                minibatch_size = policy_indices_batch.shape[0]
                 entropy_batch = torch.stack([
-                    (c / total_policies) * self.actor_critics[i].entropy.mean() for i, c in zip(policy_count_indices, policy_counts)
+                    (policy_counts / minibatch_size) * self.actor_critics[i].entropy.mean()
+                    for i, policy_counts in zip(torch.unique(policy_indices_batch, return_counts=True))
                 ], dim=0).sum(dim=0)
 
                 # KL
