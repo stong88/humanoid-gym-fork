@@ -150,11 +150,52 @@ class CGRPO:
             actor_critic.reset(dones)
     
     def compute_returns(self, last_critic_obs):  # (num_envs, ...)
-        last_values= torch.cat([
-            self.actor_critics[i].evaluate(o)
-            for i, o in enumerate(last_critic_obs.chunk(self.num_policies, dim=0))
-        ], dim=0).detach()
-        self.storage.compute_returns(last_values, self.gamma, self.lam)
+        # Compute returns
+        # ----------------
+        returns = torch.zeros_like(self.storage.rewards)
+        intermediate_returns = torch.zeros_like(self.storage.rewards[0])
+        
+        for step in reversed(range(self.storage.num_transitions_per_env)):
+            non_terminal = 1.0 - self.storage.dones[step].float()
+            intermediate_returns = self.storage.rewards[step] + self.gamma * intermediate_returns * non_terminal
+            returns[step] = intermediate_returns
+
+        self.storage.returns = returns
+
+        # Conduct grouping
+        # -----------------
+        policy_labels = self._compute_cgrpo_kmeans()  # (num_policies,)
+        
+        num_policies = len(policy_labels)
+        assert self.num_envs % num_policies == 0
+        num_envs_per_policy = self.num_envs // num_policies
+        
+        self.policy_labels_all_envs = policy_labels.repeat_interleave(num_envs_per_policy)  # (num_envs,)
+        assert self.policy_labels_all_envs.shape[0] == self.num_envs  # Requires self.num_envs % num_policies == 0
+
+        
+        advantages = []
+        for i in range(self.num_kmeans_groups):
+            group_indices = (self.policy_labels_all_envs == i).nonzero().squeeze()  # (num_envs_in_group,) -- dims will change per k-means group
+
+            group_returns = self.returns[:, group_indices]  # (num_timesteps_per_env, num_envs_in_group)
+            normalized_returns = (group_returns - group_returns.mean()) / (group_returns.std() + 1e-8)
+            advantages.append(normalized_returns)
+            
+            # TODO -- is this needed? Not if this is already done above in computing returns right?
+            # normalized_summed_returns = torch.zeros(normalized_returns.shape, device=self.device)
+            # for i in reversed(range(normalized_returns.shape[0] - 1)):
+            #     normalized_summed_returns[i] = normalized_returns[i] + normalized_returns[i + 1]
+        self.advantages = torch.cat(advantages, dim=1)  # (num_timesteps, num_envs)
+
+        assert self.advantages.shape[1] == self.num_envs
+
+
+        # last_values= torch.cat([
+        #     self.actor_critics[i].evaluate(o)
+        #     for i, o in enumerate(last_critic_obs.chunk(self.num_policies, dim=0))
+        # ], dim=0).detach()
+        # self.storage.compute_returns(last_values, self.gamma, self.lam)
     
     def _compute_cgrpo_kmeans(self):
         features = torch.zeros(self.num_policies, 3)  # recall we exclude KL divergence from \phi's
@@ -191,52 +232,42 @@ class CGRPO:
 
 
     def update(self):
-        policy_labels = self._compute_cgrpo_kmeans()  # (num_policies,)
-
         mean_value_loss = 0
         mean_surrogate_loss = 0
 
-        generator = self.storage.cgrpo_mini_batch_generator(policy_labels, self.num_kmeans_groups)
-        total_loss = 0
+        # self.policy_labels_all_envs from compute_returns(), of dim (num_envs,)
+        generator = self.storage.cgrpo_mini_batch_generator(self.policy_labels_all_envs, self.num_kmeans_groups, self.num_mini_batches, self.num_learning_epochs)
         # Per group...
-        for group_index, (obs_batch, _, actions_batch, _, _, returns_batch, old_actions_log_prob_batch, \
-            old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch) in enumerate(generator):
+        for policy_indices_batch, obs_batch, _, actions_batch, _, advantages_batch, returns_batch, old_actions_log_prob_batch, \
+            old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch in generator:
 
-                actor_critic_indices = (policy_labels == group_index).nonzero()
-                # This assumes that the batch orders envs in the same chunked order as policies, e.g. if
-                # `actor_critic_indices` has policies [1,3], then `obs_batch` is chunked as (..., [all 1's, all 3's], ...) (?)
-                chunked_obs_batches = obs_batch.chunk(len(actor_critic_indices), dim=1)  # tuples of tensors (num_timesteps_per_env, ...)
-                for i, actor_critic_index in enumerate(actor_critic_indices):
+                for i, actor_critic_index in enumerate(policy_indices_batch):
                     # Note that `masks` and `hidden_states` are hardcoded in rollout_storage to be None, so this is functionally equivalent
-                    self.actor_critics[actor_critic_index].act(chunked_obs_batches[i], masks=None, hidden_states=None)
-                chunked_actions_batches = actions_batch.chunk(len(actor_critic_indices), dim=1)
+                    self.actor_critics[actor_critic_index].act(obs_batch[i], masks=None, hidden_states=None)
+
                 actions_log_prob_batch = torch.cat([  # (num_timesteps_per_env, num envs in this group, 1)
-                    self.actor_critics[actor_critic_index].get_actions_log_prob(chunked_actions_batches[i])
-                    for i, actor_critic_index in enumerate(actor_critic_indices)
+                    self.actor_critics[actor_critic_index].get_actions_log_prob(actions_batch[i])
+                    for i, actor_critic_index in enumerate(policy_indices_batch)
                 ], dim=1)
-                # mu_batch = self.actor_critic.action_mean
-                # sigma_batch = self.actor_critic.action_std
-                entropy_batch = torch.tensor([self.actor_critics[i].entropy.mean() for i in actor_critic_indices]).mean()
+
+                mu_batch = torch.stack([self.actor_critics[i].action_mean for i in policy_indices_batch], dim=0).mean(dim=0)
+                sigma_batch = torch.stack([self.actor_critics[i].action_std for i in policy_indices_batch], dim=0).mean(dim=0)
+                entropy_batch = torch.stack([self.actor_critics[i].entropy.mean() for i in policy_indices_batch], dim=0).mean(dim=0)
 
                 # KL
-                # if self.desired_kl != None and self.schedule == 'adaptive':
-                #     with torch.inference_mode():
-                #         kl = torch.sum(
-                #             torch.log(sigma_batch / old_sigma_batch + 1.e-5) + (torch.square(old_sigma_batch) + torch.square(old_mu_batch - mu_batch)) / (2.0 * torch.square(sigma_batch)) - 0.5, axis=-1)
-                #         kl_mean = torch.mean(kl)
+                if self.desired_kl != None and self.schedule == 'adaptive':
+                    with torch.inference_mode():
+                        kl = torch.sum(
+                            torch.log(sigma_batch / old_sigma_batch + 1.e-5) + (torch.square(old_sigma_batch) + torch.square(old_mu_batch - mu_batch)) / (2.0 * torch.square(sigma_batch)) - 0.5, axis=-1)
+                        kl_mean = torch.mean(kl)
 
-                #         if kl_mean > self.desired_kl * 2.0:
-                #             self.learning_rate = max(1e-5, self.learning_rate / 1.5)
-                #         elif kl_mean < self.desired_kl / 2.0 and kl_mean > 0.0:
-                #             self.learning_rate = min(1e-2, self.learning_rate * 1.5)
+                        if kl_mean > self.desired_kl * 2.0:
+                            self.learning_rate = max(1e-5, self.learning_rate / 1.5)
+                        elif kl_mean < self.desired_kl / 2.0 and kl_mean > 0.0:
+                            self.learning_rate = min(1e-2, self.learning_rate * 1.5)
                         
-                #         for param_group in self.optimizer.param_groups:
-                #             param_group['lr'] = self.learning_rate
-
-
-                # Surrogate loss
-                # Returns shape (num_timesteps_per_env, num_groups, 1)
-                advantages_batch = returns_batch  # all work done in `group_mini_batch_generator`
+                        for param_group in self.optimizer.param_groups:
+                            param_group['lr'] = self.learning_rate
 
                 ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
                 surrogate = -torch.squeeze(advantages_batch) * ratio
@@ -244,16 +275,17 @@ class CGRPO:
                                                                                 1.0 + self.clip_param)
                 surrogate_loss = torch.max(surrogate, surrogate_clipped).mean()
 
-                total_loss = total_loss + (surrogate_loss - self.entropy_coef * entropy_batch.mean())
-                mean_surrogate_loss += surrogate_loss.item()
+                loss = surrogate_loss - self.entropy_coef * entropy_batch.mean()
 
-        # Gradient step
-        for i in range(self.num_policies):
-            self.optimizers[i].zero_grad()
-        total_loss.backward()
-        for i in range(self.num_policies):
-            nn.utils.clip_grad_norm_(self.actor_critics[i].parameters(), self.max_grad_norm)
-            self.optimizers[i].step()
+                # Gradient step
+                for i in range(policy_indices_batch):
+                    self.optimizers[i].zero_grad()
+                loss.backward()
+                for i in range(policy_indices_batch):
+                    nn.utils.clip_grad_norm_(self.actor_critics[i].parameters(), self.max_grad_norm)
+                    self.optimizers[i].step()
+
+                mean_surrogate_loss += surrogate_loss.item()
 
         num_updates = self.num_learning_epochs * self.num_mini_batches
         mean_surrogate_loss /= num_updates

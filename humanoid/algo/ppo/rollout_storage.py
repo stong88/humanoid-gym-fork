@@ -213,40 +213,62 @@ class RolloutStorage:
             yield obs_batch, critic_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
                     old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
     
-    def cgrpo_mini_batch_generator(self, policy_labels, num_kmeans_groups):
-        num_policies = len(policy_labels)
+    def cgrpo_mini_batch_generator(self, policy_labels_all_envs, num_kmeans_groups, num_mini_batches, num_epochs=8):
+        # for i in range(num_kmeans_groups):
+        #     group_indices = (policy_labels_all_envs == i).nonzero().squeeze()  # (num envs in group,)
 
-        assert self.num_envs % num_policies == 0
-        num_envs_per_policy = self.num_envs // num_policies
+        #     # Return dims should be (num_transitions_per_env, NUM_GROUPS, ...)
+        #     obs_batch = self.observations[:, group_indices]
+        #     critic_observations_batch = critic_observations[:, group_indices]
+        #     actions_batch = self.actions[:, group_indices]
+        #     target_values_batch = self.values[:, group_indices]
+        #     returns_batch = self.advantages[:, group_indices]
+        #     old_actions_log_prob_batch = self.actions_log_prob[:, group_indices]
+        #     advantages_batch = self.advantages[:, group_indices]
+        #     old_mu_batch = self.mu[:, group_indices]
+        #     old_sigma_batch = self.sigma[:, group_indices]
+        #     yield obs_batch, critic_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
+        #             old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
 
-        policy_labels_all_envs = policy_labels.repeat_interleave(num_envs_per_policy)  # (num_envs,)
 
-        assert policy_labels_all_envs.shape[0] == self.num_envs  # Requires self.num_envs % num_policies == 0
-        
+        batch_size = self.num_envs * self.num_transitions_per_env
+        mini_batch_size = batch_size // num_mini_batches
+        indices = torch.randperm(num_mini_batches*mini_batch_size, requires_grad=False, device=self.device)
+
+        observations = self.observations.flatten(0, 1)
         if self.privileged_observations is not None:
-            critic_observations = self.privileged_observations
+            critic_observations = self.privileged_observations.flatten(0, 1)
         else:
-            critic_observations = self.observations
-        
+            critic_observations = observations
 
-        for i in range(num_kmeans_groups):
-            group_indices = (policy_labels_all_envs == i).nonzero().squeeze()  # (num envs in group,)
+        policy_indices = policy_labels_all_envs.repeat_interleave(self.num_transitions_per_env)  # (num_envs * num_transitions_per_env)
+        assert policy_indices.shape[0] == observations.shape[0]
 
-            group_returns = self.returns[:, group_indices]
-            normalized_returns = (group_returns - group_returns.mean()) / (group_returns.std() + 1e-8)
-            normalized_summed_returns = torch.zeros(normalized_returns.shape, device=self.device)
-            for i in reversed(range(normalized_returns.shape[0] - 1)):
-                normalized_summed_returns[i] = normalized_returns[i] + normalized_returns[i + 1]
+        actions = self.actions.flatten(0, 1)
+        values = self.values.flatten(0, 1)
+        returns = self.returns.flatten(0, 1)
+        old_actions_log_prob = self.actions_log_prob.flatten(0, 1)
+        advantages = self.advantages.flatten(0, 1)
+        old_mu = self.mu.flatten(0, 1)
+        old_sigma = self.sigma.flatten(0, 1)
 
-            # Return dims should be (num_transitions_per_env, NUM_GROUPS, ...)
-            obs_batch = self.observations[:, group_indices]
-            critic_observations_batch = critic_observations[:, group_indices]
-            actions_batch = self.actions[:, group_indices]
-            target_values_batch = self.values[:, group_indices]
-            returns_batch = normalized_summed_returns
-            old_actions_log_prob_batch = self.actions_log_prob[:, group_indices]
-            advantages_batch = self.advantages[:, group_indices]
-            old_mu_batch = self.mu[:, group_indices]
-            old_sigma_batch = self.sigma[:, group_indices]
-            yield obs_batch, critic_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
-                    old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
+        for epoch in range(num_epochs):
+            for i in range(num_mini_batches):
+
+                start = i*mini_batch_size
+                end = (i+1)*mini_batch_size
+                batch_idx = indices[start:end]
+
+                policy_indices_batch = policy_indices[batch_idx]
+                obs_batch = observations[batch_idx]
+                critic_observations_batch = critic_observations[batch_idx]
+                actions_batch = actions[batch_idx]
+                target_values_batch = values[batch_idx]
+                returns_batch = returns[batch_idx]
+                old_actions_log_prob_batch = old_actions_log_prob[batch_idx]
+                advantages_batch = advantages[batch_idx]
+                old_mu_batch = old_mu[batch_idx]
+                old_sigma_batch = old_sigma[batch_idx]
+                yield policy_indices_batch, obs_batch, critic_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
+                       old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
+
