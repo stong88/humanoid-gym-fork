@@ -267,7 +267,7 @@ class CGRPO:
                 minibatch_size = policy_indices_batch.shape[0]
                 entropy_batch = torch.stack([
                     (policy_counts / minibatch_size) * self.actor_critics[i].entropy.mean()
-                    for i, policy_counts in zip(torch.unique(policy_indices_batch, return_counts=True))
+                    for i, policy_counts in zip(*torch.unique(policy_indices_batch, return_counts=True))
                 ], dim=0).sum(dim=0)
 
                 # KL
