@@ -241,7 +241,7 @@ class RolloutStorage:
         else:
             critic_observations = observations
 
-        policy_indices = policy_labels_all_envs.repeat_interleave(self.num_transitions_per_env)  # (num_envs * num_transitions_per_env)
+        policy_indices = policy_labels_all_envs.repeat_interleave(self.num_transitions_per_env).to(device=self.device)  # (num_envs * num_transitions_per_env)
         assert policy_indices.shape[0] == observations.shape[0]
 
         actions = self.actions.flatten(0, 1)
