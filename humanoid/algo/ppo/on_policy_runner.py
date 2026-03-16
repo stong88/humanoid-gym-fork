@@ -40,6 +40,7 @@ from .ppo import PPO
 from .actor_critic import ActorCritic
 from humanoid.algo.vec_env import VecEnv
 from torch.utils.tensorboard import SummaryWriter
+from .grpo_original import GRPOOriginal
 
 
 class OnPolicyRunner:
