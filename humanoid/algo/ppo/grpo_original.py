@@ -122,6 +122,7 @@ class GRPOOriginal(PPO):
                 mu_batch = self.actor_critic.action_mean
                 sigma_batch = self.actor_critic.action_std
                 entropy_batch = self.actor_critic.entropy
+                self.last_mean_entropy = entropy_batch.mean().item()
 
                 # Surrogate loss
                 ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
