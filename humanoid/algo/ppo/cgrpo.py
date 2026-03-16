@@ -241,7 +241,7 @@ class CGRPO:
         for policy_indices_batch, obs_batch, _, actions_batch, _, advantages_batch, returns_batch, old_actions_log_prob_batch, \
             old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch in generator:
 
-                actions_log_prob_batch = torch.zeros_like(old_actions_log_prob_batch)
+                actions_log_prob_batch = torch.zeros(old_actions_log_prob_batch.shape[0])
                 mu_batch = torch.zeros_like(old_mu_batch)
                 sigma_batch = torch.zeros_like(old_sigma_batch)
 
@@ -250,7 +250,7 @@ class CGRPO:
                     indices_of_policy = policy_indices_mask.nonzero().squeeze()
                     
                     self.actor_critics[i].act(obs_batch[policy_indices_mask], masks=None, hidden_states=None)
-                    actions_log_prob_batch[indices_of_policy] = self.actor_critics[i].get_actions_log_prob(actions_batch[policy_indices_mask]).unsqueeze(dim=-1)
+                    actions_log_prob_batch[indices_of_policy] = self.actor_critics[i].get_actions_log_prob(actions_batch[policy_indices_mask])
 
                     mu_batch[indices_of_policy] = self.actor_critics[i].action_mean
                     sigma_batch[indices_of_policy] = self.actor_critics[i].action_std
