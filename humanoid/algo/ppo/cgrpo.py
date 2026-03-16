@@ -167,11 +167,12 @@ class CGRPO:
         policy_labels = self._compute_cgrpo_kmeans()  # (num_policies,)
         
         num_policies = len(policy_labels)
-        assert self.num_envs % num_policies == 0
-        num_envs_per_policy = self.num_envs // num_policies
+        num_envs = self.storage.num_envs
+        assert num_envs % num_policies == 0
+        num_envs_per_policy = num_envs // num_policies
         
         self.policy_labels_all_envs = policy_labels.repeat_interleave(num_envs_per_policy)  # (num_envs,)
-        assert self.policy_labels_all_envs.shape[0] == self.num_envs  # Requires self.num_envs % num_policies == 0
+        assert self.policy_labels_all_envs.shape[0] == num_envs  # Requires num_envs % num_policies == 0
 
         
         advantages = []
@@ -188,7 +189,7 @@ class CGRPO:
             #     normalized_summed_returns[i] = normalized_returns[i] + normalized_returns[i + 1]
         self.advantages = torch.cat(advantages, dim=1)  # (num_timesteps, num_envs)
 
-        assert self.advantages.shape[1] == self.num_envs
+        assert self.advantages.shape[1] == num_envs
 
 
         # last_values= torch.cat([
