@@ -241,7 +241,7 @@ class CGRPO:
         for policy_indices_batch, obs_batch, _, actions_batch, _, advantages_batch, returns_batch, old_actions_log_prob_batch, \
             old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch in generator:
 
-                actions_log_prob_batch = torch.zeros(old_actions_log_prob_batch.shape[0])
+                actions_log_prob_batch = torch.zeros(old_actions_log_prob_batch.shape[0]).to(device=self.device)
                 mu_batch = torch.zeros_like(old_mu_batch)
                 sigma_batch = torch.zeros_like(old_sigma_batch)
 
