@@ -248,7 +248,7 @@ class CGRPO:
                 actions_log_prob_batch = torch.stack([  # (num_timesteps_per_env, num envs in this group, 1)
                     self.actor_critics[actor_critic_index].get_actions_log_prob(actions_batch[i])
                     for i, actor_critic_index in enumerate(policy_indices_batch)
-                ], dim=1)
+                ])
 
                 mu_batch = torch.stack([self.actor_critics[i].action_mean for i in policy_indices_batch], dim=0).mean(dim=0)
                 sigma_batch = torch.stack([self.actor_critics[i].action_std for i in policy_indices_batch], dim=0).mean(dim=0)
