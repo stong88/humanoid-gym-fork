@@ -246,7 +246,7 @@ class CGRPO:
                 for i in range(self.num_policies):
                     policy_indices = policy_indices_batch == i
                     self.actor_critics[i].act(obs_batch[policy_indices], masks=None, hidden_states=None)
-                    actions_log_prob_batch[policy_indices.nonzero().squeeze()] = self.actor_critics[i].get_actions_log_prob(actions_batch[policy_indices])
+                    actions_log_prob_batch[policy_indices.nonzero().squeeze()] = self.actor_critics[i].get_actions_log_prob(actions_batch[policy_indices]).unsqueeze(dim=-1)
 
                 # for i, actor_critic_index in enumerate(policy_indices_batch):
                 #     # Note that `masks` and `hidden_states` are hardcoded in rollout_storage to be None, so this is functionally equivalent
