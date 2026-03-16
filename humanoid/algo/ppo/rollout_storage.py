@@ -213,7 +213,7 @@ class RolloutStorage:
             yield obs_batch, critic_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
                     old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
     
-    def cgrpo_mini_batch_generator(self, policy_labels_all_envs, num_kmeans_groups, num_mini_batches, num_epochs=8):
+    def cgrpo_mini_batch_generator(self, num_policies, num_kmeans_groups, num_mini_batches, num_epochs=8):
         # for i in range(num_kmeans_groups):
         #     group_indices = (policy_labels_all_envs == i).nonzero().squeeze()  # (num envs in group,)
 
@@ -241,7 +241,7 @@ class RolloutStorage:
         else:
             critic_observations = observations
 
-        policy_indices = policy_labels_all_envs.repeat_interleave(self.num_transitions_per_env).to(device=self.device)  # (num_envs * num_transitions_per_env)
+        policy_indices = torch.arange(num_policies).repeat_interleave(self.num_envs * self.num_transitions_per_env).to(device=self.device)  # (num_envs * num_transitions_per_env)
         assert policy_indices.shape[0] == observations.shape[0]
 
         actions = self.actions.flatten(0, 1)

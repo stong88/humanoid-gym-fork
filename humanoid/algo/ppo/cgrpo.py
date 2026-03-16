@@ -171,13 +171,13 @@ class CGRPO:
         assert num_envs % num_policies == 0
         num_envs_per_policy = num_envs // num_policies
         
-        self.policy_labels_all_envs = policy_labels.repeat_interleave(num_envs_per_policy)  # (num_envs,)
-        assert self.policy_labels_all_envs.shape[0] == num_envs  # Requires num_envs % num_policies == 0
+        group_labels_all_envs = policy_labels.repeat_interleave(num_envs_per_policy)  # (num_envs,)
+        assert group_labels_all_envs.shape[0] == num_envs  # Requires num_envs % num_policies == 0
 
         
         advantages = []
         for i in range(self.num_kmeans_groups):
-            group_indices = (self.policy_labels_all_envs == i).nonzero().squeeze()  # (num_envs_in_group,) -- dims will change per k-means group
+            group_indices = (group_labels_all_envs == i).nonzero().squeeze()  # (num_envs_in_group,) -- dims will change per k-means group
 
             group_returns = returns[:, group_indices]  # (num_timesteps_per_env, num_envs_in_group)
             normalized_returns = (group_returns - group_returns.mean()) / (group_returns.std() + 1e-8)
@@ -236,8 +236,7 @@ class CGRPO:
         mean_value_loss = 0
         mean_surrogate_loss = 0
 
-        # self.policy_labels_all_envs from compute_returns(), of dim (num_envs,)
-        generator = self.storage.cgrpo_mini_batch_generator(self.policy_labels_all_envs, self.num_kmeans_groups, self.num_mini_batches, self.num_learning_epochs)
+        generator = self.storage.cgrpo_mini_batch_generator(self.num_policies, self.num_kmeans_groups, self.num_mini_batches, self.num_learning_epochs)
         # Per group...
         for policy_indices_batch, obs_batch, _, actions_batch, _, advantages_batch, returns_batch, old_actions_log_prob_batch, \
             old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch in generator:
