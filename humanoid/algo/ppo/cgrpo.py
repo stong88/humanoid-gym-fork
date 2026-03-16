@@ -241,9 +241,12 @@ class CGRPO:
         for policy_indices_batch, obs_batch, _, actions_batch, _, advantages_batch, returns_batch, old_actions_log_prob_batch, \
             old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch in generator:
 
-                for i, actor_critic_index in enumerate(policy_indices_batch):
-                    # Note that `masks` and `hidden_states` are hardcoded in rollout_storage to be None, so this is functionally equivalent
-                    self.actor_critics[actor_critic_index].act(obs_batch[i], masks=None, hidden_states=None)
+                for i in range(self.num_policies):
+                    self.actor_critics[i].act(obs_batch[policy_indices_batch == i], masks=None, hidden_states=None)
+
+                # for i, actor_critic_index in enumerate(policy_indices_batch):
+                #     # Note that `masks` and `hidden_states` are hardcoded in rollout_storage to be None, so this is functionally equivalent
+                #     self.actor_critics[actor_critic_index].act(obs_batch[i], masks=None, hidden_states=None)
 
                 actions_log_prob_batch = torch.stack([  # (num_timesteps_per_env, num envs in this group, 1)
                     self.actor_critics[actor_critic_index].get_actions_log_prob(actions_batch[i])
