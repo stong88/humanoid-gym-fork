@@ -245,7 +245,7 @@ class CGRPO:
                     # Note that `masks` and `hidden_states` are hardcoded in rollout_storage to be None, so this is functionally equivalent
                     self.actor_critics[actor_critic_index].act(obs_batch[i], masks=None, hidden_states=None)
 
-                actions_log_prob_batch = torch.cat([  # (num_timesteps_per_env, num envs in this group, 1)
+                actions_log_prob_batch = torch.stack([  # (num_timesteps_per_env, num envs in this group, 1)
                     self.actor_critics[actor_critic_index].get_actions_log_prob(actions_batch[i])
                     for i, actor_critic_index in enumerate(policy_indices_batch)
                 ], dim=1)
