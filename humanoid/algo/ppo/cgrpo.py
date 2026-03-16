@@ -266,8 +266,9 @@ class CGRPO:
                         elif kl_mean < self.desired_kl / 2.0 and kl_mean > 0.0:
                             self.learning_rate = min(1e-2, self.learning_rate * 1.5)
                         
-                        for param_group in self.optimizer.param_groups:
-                            param_group['lr'] = self.learning_rate
+                        for optimizer in self.optimizers:
+                            for param_group in optimizer.param_groups:
+                                param_group['lr'] = self.learning_rate
 
                 ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
                 surrogate = -torch.squeeze(advantages_batch) * ratio
