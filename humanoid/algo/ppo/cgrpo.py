@@ -175,13 +175,13 @@ class CGRPO:
         assert group_labels_all_envs.shape[0] == num_envs  # Requires num_envs % num_policies == 0
 
         
-        advantages = []
+        advantages = torch.zeros_like(returns)
         for i in range(self.num_kmeans_groups):
             group_indices = (group_labels_all_envs == i).nonzero().squeeze()  # (num_envs_in_group,) -- dims will change per k-means group
 
             group_returns = returns[:, group_indices]  # (num_timesteps_per_env, num_envs_in_group)
-            normalized_returns = (group_returns - group_returns.mean()) / (group_returns.std() + 1e-8)
-            advantages.append(normalized_returns)
+            normalized_returns = (group_returns - group_returns.mean()) / (group_returns.std() + 1e-8)  # (num_timesteps_per_env, num_envs_in_group)
+            advantages[:, group_indices] = normalized_returns
             
             # TODO -- is this needed? Not if this is already done above in computing returns right?
             # normalized_summed_returns = torch.zeros(normalized_returns.shape, device=self.device)
