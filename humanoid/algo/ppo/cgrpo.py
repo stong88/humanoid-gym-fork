@@ -126,11 +126,11 @@ class CGRPO:
         self.transition.action_mean = torch.cat([
             self.actor_critics[i].action_mean
             for i in range(self.num_policies)
-        ]).mean().detach()
+        ]).detach()
         self.transition.action_sigma = torch.cat([
             self.actor_critics[i].action_std
             for i in range(self.num_policies)
-        ]).mean().detach()
+        ]).detach()
         # need to record obs and critic_obs before env.step()
         self.transition.observations = obs
         self.transition.critic_observations = critic_obs
