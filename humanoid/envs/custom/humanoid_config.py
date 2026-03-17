@@ -301,13 +301,13 @@ class XBotLCfgCGRPO(XBotLCfgGRPO):
     seed = 5
     runner_class_name = 'OnPolicyRunner'
 
-    class policy(XBotLCfgPPO.policy):
+    class policy(XBotLCfgGRPO.policy):
         init_noise_std = 1.0
         actor_hidden_dims = [512, 256, 128]
-        critic_hidden_dims = [768, 256, 128]
+        critic_hidden_dims = []
 
     class algorithm(XBotLCfgGRPO.algorithm):
-        # Keep PPO-like optimization cadence for fast policy improvement.
+        # Critic-free CGRPO cadence.
         learning_rate = 2e-5
         num_learning_epochs = 4
         num_mini_batches = 8
@@ -318,8 +318,8 @@ class XBotLCfgCGRPO(XBotLCfgGRPO):
         kl_beta = 0.004
         desired_kl = 0.01
         schedule = 'adaptive'
-        value_loss_coef = 1.0
-        use_clipped_value_loss = True
+        value_loss_coef = 0.0
+        use_clipped_value_loss = False
 
         # CGRPO params
         temporal_smoothness_coef = 0.01
@@ -340,7 +340,7 @@ class XBotLCfgCGRPO(XBotLCfgGRPO):
         group_size = -1
 
     class runner(XBotLCfgGRPO.runner):
-        policy_class_name = 'ActorCritic'
+        policy_class_name = 'Actor'
         algorithm_class_name = 'CGRPO'
         num_steps_per_env = 60
         max_iterations = 3001
