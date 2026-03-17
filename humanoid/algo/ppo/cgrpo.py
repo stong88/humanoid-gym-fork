@@ -165,11 +165,10 @@ class CGRPO:
         # Conduct grouping
         # -----------------
         policy_labels = self._compute_cgrpo_kmeans()  # (num_policies,)
-        
-        num_policies = len(policy_labels)
+
         num_envs = self.storage.num_envs
-        assert num_envs % num_policies == 0
-        num_envs_per_policy = num_envs // num_policies
+        assert num_envs % self.num_policies == 0
+        num_envs_per_policy = num_envs // self.num_policies
         
         group_labels_all_envs = policy_labels.repeat_interleave(num_envs_per_policy)  # (num_envs,)
         assert group_labels_all_envs.shape[0] == num_envs  # Requires num_envs % num_policies == 0
