@@ -187,7 +187,7 @@ class CGRPO:
             # normalized_summed_returns = torch.zeros(normalized_returns.shape, device=self.device)
             # for i in reversed(range(normalized_returns.shape[0] - 1)):
             #     normalized_summed_returns[i] = normalized_returns[i] + normalized_returns[i + 1]
-        self.advantages = torch.cat(advantages, dim=1)  # (num_timesteps, num_envs)
+        self.advantages = advantages
 
         assert self.advantages.shape[1] == num_envs
 
